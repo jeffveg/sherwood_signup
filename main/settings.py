@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = '-a*vxl3cr_kb1*#&ti50a%330ftc#)_y03(hj(e&77_pm-d(4t' 
 SECRET_KEY_FALLBACKS = ['django-insecure-7#sul1^n12*w8$ewlhrb%0meqgc*n(jr)w10l-u_if!+zib#a(']
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -123,7 +123,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT =(
     BASE_DIR / "media"
 )
-STATIC_ROOT = '/home/Signup/webroot/static/'
+# Web Server 
+# STATIC_ROOT = '/home/Signup/webroot/static/'
+# Local Server
+STATIC_ROOT = os.path.join(BASE_DIR, 'webroot/static')
 
 LOGIN_URL = 'login'
 LOGOUT_URL = 'logout'
