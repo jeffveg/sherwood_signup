@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+
+<div class="container">
+    {% for message in messages %}
+    <div class="alert alert-dismissible alert-{{ message.tags }}" id="success-message">
+      {{ message }}
+    </div>
+  {% endfor %}
+  <div class="row py-lg-5">
+      <div class="col-lg-8 col-md-8 mx-auto text-center">
+          <div class="col">
+              <div class="card">
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item green-card-body">Tournament: {{ tournament.name }}</li>
+                        <li class="list-group-item green-card-body">Game: {{ tournament.game_name }}</li>
+                        <li class="list-group-item green-card-body">Start Date: {{ tournament.start_at}}</li>
+                        <!---
+                        <li class="list-group-item green-card-body">Type: {{ tournament.tournament_type }}</li>
+                        --->
+                      </ul>
+                </div>
+              </div>
+          </div>
+      </div>
+  </div>
+  <section class="text-center container">
+      <div class="row">
+        <div class="col-lg-8 col-md-8 mx-auto">
+          <div class="col">
+            <div class="card h-100 shadow-sm black-card">
+              <div class="card-body">
+                <h3 class="card-title">Register your team here</h3>
+                <hr>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <div class="row text-center justify-content-center align-items-center">
+                          <div class="col col-md-8 mb-4 mt-2">
+                            <label for="team_name" class="my-2 sr-only">Team name:</label>
+                         
+                            <input class="form-control" name="name" type="text" required>
+                          </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="mb-2 mt-4 btn btn-sm btn-success">Register</button> 
+                </form>
+                
+                
+              </div>
+            </div>
+          </div>      
+        </div>
+      </div>
+  
+  </section>
+  </div>
+  
+  <script>
+    const successMessage = document.getElementById('success-message');
+    
+    if (successMessage) {
+      setTimeout(function() {
+        successMessage.classList.add('d-none'); // Hide after timeout
+      }, 3000); // Timeout in milliseconds (adjust as needed)
+    }
+    </script>
+{% endblock %}

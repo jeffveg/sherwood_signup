@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load team_names %}
+{% block title %}Tournament Detail {% endblock title %}
+{% block content %}
+
+<section id="tournaments">
+<div class="container mt-5 d-flex flex-column">
+    <div class="row mb-4 justify-content-center">
+      <div class="col-md-6">
+        <h1 style="text-align: center;">{{ tournament.name }}</h1>
+    <hr>
+    <div class="row">
+      <div class="col-lg-12 col-md-8 mx-auto text-center">
+          <div class="col">
+              <div class="card">
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item green-card-body">Game: {{ tournament.game_name }}</li>
+                        <li class="list-group-item green-card-body">Start Date: {{ tournament.start_at}}</li>
+                        <!---
+                        <li class="list-group-item green-card-body">Type: {{ tournament.tournament_type }}</li>
+                        --->
+                      </ul>
+                </div>
+              </div>
+          </div>
+      </div>
+  </div>
+      </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-sm-1 row-cols-md-2 justify-content-center">
+        {% if empty_slots %}
+        <div class="col-md-5 mt-4">
+          <h3 style="text-align: center;">Empty Slots</h3>
+          <p style="text-align: center;">Team captain can register team here</p>
+          <ul class="list-group">
+            {% for team in empty_slots %}
+              <li class="list-group-item d-flex justify-content-between align-items-center green-card-body">
+                {{ team.name }}
+                <a href="{% url 'team_registration' tournament.name tournament.id team.id  team.name %}"><button type="button" class="btn btn-primary">Register Your Team</button></a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+    {% if registered_teams %}
+      <div class="col-md-5 mt-4">
+        {% if not empty_slots %}
+            <p style="text-align: center;">No empty slots</p>
+        {% endif %}
+
+        <h3 style="text-align: center;">Registered teams</h3>
+        <p style="text-align: center;">Players can join as team member here</p>
+        <ul class="list-group">
+          {% for team in registered_teams %}
+            <li class="list-group-item d-flex justify-content-between align-items-center green-card-body">
+              <b>{{ team.name }}</b>
+              {% is_captain team_id=team.id as captain_of %}
+              {% if captain_of %}
+              <a href="{% url 'team_detail' team.id %}"><button type="button" class="btn btn-primary">Manage team</button></a>
+              
+              {% else %}
+              
+              {% is_member team.id as member_status %}
+               
+              <a href="{% if member_status == "Requested" or member_status == "Joined" %} {% url 'my_teams' %} {% else %} {% url 'join_team' team.id %} {% endif %}"><button type="button" class="btn btn-primary">{{ member_status }}</button></a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

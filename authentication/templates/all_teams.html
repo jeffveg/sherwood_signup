@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load team_names %}
+
+{% block content %}
+<div class="container">
+    <section class="py-5 text-center container">
+    <h1>Teams Rosters</h1>
+    <div class="col-lg-8 col-md-8 mx-auto">
+        <table class="table table-responsive caption-top" id="manage_team_list">
+            <thead>
+            <tr class="green-card-body">
+                <th scope="col">Team</th>
+                <th scope="col">Captian</th>
+                <th scope="col">Player 1</th>
+                <th scope="col">Player 2</th>
+                <th scope="col">Player 3</th>
+                <th scope="col">Player 4</th>
+            </tr>
+            </thead>
+            <tbody>
+                {% for pk in team %}   
+                    <tr class="green-card-body">
+                    <td>{{pk.name}}</td>
+                    <td>{{pk.captain}}</td>
+                    {% for user in pk.members.all %}                  
+                    <td>{{user.username}}</td>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

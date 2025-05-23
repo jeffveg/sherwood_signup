@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+
+<section class="py-5 text-center container">
+  <div class="alert-container">
+  {% for notification in notifications %}
+    <div class="alert alert-dismissible alert-info fade show" role="alert">
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert">&times;</button>
+      {{ notification.message }}
+    </div>
+  {% endfor %}
+</div>
+
+  <div class="row py-lg-5">
+    <div class="col-lg-6 col-md-8 mx-auto">
+      <h1 class="fw-light">Ongoing Tournaments</h1>
+      <p class="lead text-body-secondary">Welcome to Sherwood Adventure. Find your next challenge!
+        Explore our ongoing tournaments and discover exciting competitions to join.</p>
+      <p>
+        <a href="{% url 'my_teams' %}" class="btn btn-success my-2">My teams</a>
+        <a href="{% url 'manage_teams' %}" class="btn btn-secondary my-2">Manage Teams</a>
+      </p>
+    </div>
+  </div>
+
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4">
+      {% for tournament in tournaments %}
+        <div class="col">
+          <div class="card h-100 shadow-sm black-card">
+            <div class="card-body">
+              <h5 class="card-title">{{ tournament.name }}</h5>
+              
+              <ul class="list-group list-group-flush">
+                <li class="list-group-item green-card-body">Game: {{ tournament.game_name }}</li>
+                <li class="list-group-item green-card-body">Start Date: {{ tournament.start_at}}</li>
+                <!---
+                <li class="list-group-item green-card-body">Type: {{ tournament.tournament_type }}</li>
+                --->
+              </ul>
+              <a href="{% url 'tournament_detail' tournament.id %}" class="stretched-link"><button type="button" class="btn btn-outline-warning">Details</button> </a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  
+</section>
+
+ 
+
+  {% endblock %}

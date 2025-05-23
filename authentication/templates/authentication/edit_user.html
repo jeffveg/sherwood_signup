@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Edit your account{% endblock %}
+
+{% block content %}
+<section class="py-5 container">
+    <div class="row py-lg-5">
+        <div class="col-lg-6 col-md-8 mx-auto">
+            <div class="col mt-4 mb-4">
+                <h1 class="text-center">Edit your account</h1>
+                
+                <form method="post">
+                    {{ user_form|crispy }}
+                    {% csrf_token %}
+                    <div class="form-group mt-4">
+                        <button type="submit" class="btn btn-primary rounded submit">Save Changes</button>
+                    </div>
+                    
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
