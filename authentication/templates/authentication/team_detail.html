@@ -24,17 +24,17 @@
                     </div>
                   </div>
               </div>
-
+<!-- Remove the number of players on a team 
               <div class="form-group">
                 <div class="row">
                   <div class="col-md-6 mb-4 mt-2">
-                    <label for="max_members" class="sr-only">Number of players on a team:</label>
+                    <label for="max_members" class="sr-only">Team Size:</label>
                   </div>
                   <div class="col-md-6">
                     <input class="form-control form-control-sm" type="number"  name="max_members" value="{{ team.max_members }}" readonly>
                   </div>
                 </div>
-              
+-->
               </div>
               <button type="submit" class="mb-2 mt-2 btn btn-sm btn-success">Save</button> 
             </form>
@@ -55,9 +55,9 @@
 
     <div class="row py-lg-4" id="team_list">
       <h3 class="lead text-body-secondary">Team members</h3>
-    
     <div class="col-lg-8 col-md-8 mx-auto">
-      <table class="table table-responsive caption-top" id="table_team_request" style="width: 100%;">
+<!-- Removed the pending players 
+    <table class="table table-responsive caption-top" id="table_team_request" style="width: 100%;">
         <caption class="text-center" style="color: yellow;">Pending requests</caption>
           <thead>
             <tr class="green-card-body">
@@ -106,7 +106,7 @@
     </div>
   {% endfor %}
     </div>
-
+-->
     <div class="col-lg-8 col-md-8 mx-auto">
       <table class="table table-responsive caption-top" id="manage_team_list">
         <caption class="text-center" style="color: yellow;">Joined Members</caption>
