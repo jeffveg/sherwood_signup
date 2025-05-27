@@ -5,7 +5,12 @@
 {% block content %}
 
 <h1>Welcome {{ new_user.first_name }}!</h1>
+
+<p>Your account has been successfully created. Now you can <a
+href="{% url "login" %}">log in</a>.</p>
+<!--   this was to force people to the waiver 
 <p>Your account has been successfully created. Please fill out the <a target="_blank"
 href="https://form.jotform.com/SherwoodAdventure/Tournament_Signup">waiver</a>.</p>
+-->
 
 {% endblock %}
