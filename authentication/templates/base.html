@@ -49,8 +49,12 @@
                 <a class="nav-link" href="/">Tournaments</a>
               </li>
               {% if request.user.is_authenticated %}
-                <li><a href="{% url 'my_teams' %}" class="nav-link px-2 text-white text-sm-start">My teams</a></li>
+                <!-- Remove the My Team link
+                 <li><a href="{% url 'my_teams' %}" class="nav-link px-2 text-white text-sm-start">My teams</a></li>
+                Remove the request counter
                 <li><a href="{% url 'manage_teams' %}" class="nav-link px-2 text-white text-sm-start">Manage Teams <sup style="color: rgb(228, 0, 0); font-weight:bolder">({% membership_requests_count %})</sup></a></li>
+                -->
+                <li><a href="{% url 'manage_teams' %}" class="nav-link px-2 text-white text-sm-start">Manage Teams</a></li>
               {% endif %}
 
               

@@ -22,7 +22,10 @@
             <tbody>
             {% for team in captained_teams %}
               <tr class="green-card-body">
-                <td>{{team.name}} (<span style="color: rgb(255, 18, 18); font-weight: bolder">{{ team.membership_requests.count }}</span>)</td>
+                <!-- Remove Request couneter
+                 <td>{{team.name}} (<span style="color: rgb(255, 18, 18); font-weight: bolder">{{ team.membership_requests.count }}<
+                 -->
+                <td>{{team.name}}</td>
                 <td>{{team.tournament_name}}</td>
                 <td><a href="{% url 'team_detail' team.id %}"><button type="button" class="btn btn-success btn-sm">View Details</button></a></td>
                 <td><a href="{% url 'deregister_team' team.id %}"><button type="button" class="btn btn-danger btn-sm">Unregister Team</button></a></td>
