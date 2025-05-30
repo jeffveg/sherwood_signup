@@ -141,8 +141,10 @@ def deregister_team(request, team_id):
         participant_id = team.participant_id
         team.delete()
         try:
-            challonge.participants.destroy(tournament_id, participant_id)
-            challonge.participants.create(tournament_id, name=original_name)
+            # Change from create destory to update
+            challonge.participants.update(tournament_id, participant_id, name=original_name)
+            # challonge.participants.destroy(tournament_id, participant_id)
+            # challonge.participants.create(tournament_id, name=original_name)
             messages.success(request, "You have unregistered from the tournament successfully")
         except Exception as e:
             print(e)
@@ -170,7 +172,8 @@ def team_detail(request, pk):
                 
                 if updated:
                     team.name = form.data['name']
-                    team.max_members = form.data['max_members']
+                    # Not user configurable 
+                    # team.max_members = form.data['max_members']
                     team.save()
                     messages.success(request, 'Team details updated successfully!')
                     return redirect('team_detail', pk=team.id)
