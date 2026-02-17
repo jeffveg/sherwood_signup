@@ -1,0 +1,58 @@
+# Sherwood Adventure Tournament System
+# Apache Configuration
+
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Force HTTPS
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Remove trailing slashes (except for directories)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)/$ /$1 [L,R=301]
+
+# Prevent directory browsing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "\.(sql|md|log|env)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect config directory
+RewriteRule ^config/ - [F,L]
+
+# Protect includes directory from direct access
+RewriteRule ^includes/ - [F,L]
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Set PHP settings (if allowed by host)
+<IfModule mod_php.c>
+    php_value session.cookie_httponly 1
+    php_value session.cookie_secure 1
+    php_value session.use_strict_mode 1
+    php_value session.cookie_samesite Strict
+</IfModule>
+
+# Cache static assets
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+</IfModule>
+
+# Compress output
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript
+</IfModule>
+
+# Custom error pages
+ErrorDocument 404 /index.php
+ErrorDocument 500 /index.php

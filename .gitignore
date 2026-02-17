@@ -1,0 +1,55 @@
+# ============================================================
+# Sherwood Adventure Tournament System - .gitignore
+# ============================================================
+
+# === Environment & Credentials ===
+config/database.php
+.env
+.env.*
+*.pem
+*.key
+
+# === IDE & Editor ===
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === OS Files ===
+nul
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# === Dependencies ===
+vendor/
+node_modules/
+composer.lock
+package-lock.json
+
+# === Logs & Debug ===
+*.log
+error_log
+debug.log
+php_errors.log
+
+# === Uploads & User Data ===
+uploads/
+tmp/
+temp/
+cache/
+
+# === Installation ===
+# Uncomment after initial setup is complete:
+# install.php
+
+# === Claude AI ===
+.claude/
