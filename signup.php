@@ -79,8 +79,14 @@ if ($isAccountBased && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($loginEmail) || empty($loginPassword)) {
             $authErrors[] = 'Email and password are required.';
-        } elseif (!loginTeamAccount($loginEmail, $loginPassword)) {
-            $authErrors[] = 'Invalid email or password.';
+        } else {
+            try {
+                if (!loginTeamAccount($loginEmail, $loginPassword)) {
+                    $authErrors[] = 'Invalid email or password.';
+                }
+            } catch (PDOException $e) {
+                $authErrors[] = 'Account system not available. Please run the database migration (Features 7-8 in migration-features.sql).';
+            }
         }
         // On success, loginTeamAccount sets session — page will reload showing team form
         if (empty($authErrors) && isTeamLoggedIn()) {
@@ -108,12 +114,16 @@ if ($isAccountBased && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($regPassword !== $regConfirm) $authErrors[] = 'Passwords do not match.';
 
         if (empty($authErrors)) {
-            $result = registerTeamAccount($regEmail, $regPassword, $regName, $regPhone);
-            if ($result === true) {
-                header("Location: /signup.php?tournament_id={$tournamentId}");
-                exit;
-            } else {
-                $authErrors[] = $result;
+            try {
+                $result = registerTeamAccount($regEmail, $regPassword, $regName, $regPhone);
+                if ($result === true) {
+                    header("Location: /signup.php?tournament_id={$tournamentId}");
+                    exit;
+                } else {
+                    $authErrors[] = $result;
+                }
+            } catch (PDOException $e) {
+                $authErrors[] = 'Account system not available. Please run the database migration (Features 7-8 in migration-features.sql).';
             }
         }
         $activeAuthTab = 'register';
@@ -191,18 +201,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
     if (empty($errors)) {
         $regCode = generateRegistrationCode();
 
-        $stmt = $db->prepare("
-            INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, team_account_id, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registered')
-        ");
-        $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode, $team_account_id]);
+        // Check if team_account_id column exists (requires migration Feature 8)
+        $hasAccountCol = false;
+        try {
+            $db->query("SELECT team_account_id FROM teams LIMIT 0");
+            $hasAccountCol = true;
+        } catch (PDOException $e) { /* column not yet added */ }
+
+        if ($hasAccountCol) {
+            $stmt = $db->prepare("
+                INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, team_account_id, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registered')
+            ");
+            $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode, $team_account_id]);
+        } else {
+            $stmt = $db->prepare("
+                INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'registered')
+            ");
+            $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode]);
+        }
 
         $teamId = $db->lastInsertId();
 
         // Handle logo upload
-        $logoFilename = handleLogoUpload($teamId);
-        if ($logoFilename) {
-            $db->prepare("UPDATE teams SET logo_path = ? WHERE id = ?")->execute([$logoFilename, $teamId]);
+        if (function_exists('handleLogoUpload')) {
+            $logoFilename = handleLogoUpload($teamId);
+            if ($logoFilename) {
+                $db->prepare("UPDATE teams SET logo_path = ? WHERE id = ?")->execute([$logoFilename, $teamId]);
+            }
         }
 
         $success = true;
