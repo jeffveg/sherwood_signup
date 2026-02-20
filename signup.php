@@ -66,18 +66,18 @@ $success = false;
 $regCode = '';
 $activeAuthTab = 'login'; // default tab for account-based
 
-// Validate stale team sessions — if session says logged in but account doesn't exist, clear it
+// Stale session guard: verify the session's team_account_id still exists in the DB.
+// This prevents bypassing the auth gate with a leftover session cookie from testing,
+// a deleted account, or if the team_accounts table hasn't been created yet.
 if (isTeamLoggedIn()) {
     try {
         $acctCheck = $db->prepare("SELECT id FROM team_accounts WHERE id = ?");
         $acctCheck->execute([$_SESSION['team_account_id']]);
         if (!$acctCheck->fetch()) {
-            // Account no longer exists — clear stale session
-            logoutTeamAccount();
+            logoutTeamAccount(); // Account no longer exists
         }
     } catch (PDOException $e) {
-        // team_accounts table doesn't exist — clear session
-        logoutTeamAccount();
+        logoutTeamAccount(); // team_accounts table doesn't exist (migration not applied)
     }
 }
 
@@ -157,14 +157,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
     $team_name = trim($_POST['team_name'] ?? '');
     $time_slot_id = intval($_POST['time_slot_id'] ?? 0) ?: null;
 
-    // For simple form, collect captain info from form
-    // For account-based, pull from session
+    // For account-based tournaments, captain info comes from the team_accounts table
+    // (pre-populated during account registration). For simple form, it comes from POST.
     if ($isAccountBased && isTeamLoggedIn()) {
         $acctStmt = $db->prepare("SELECT captain_name, email, phone FROM team_accounts WHERE id = ?");
         $acctStmt->execute([$_SESSION['team_account_id']]);
         $acctData = $acctStmt->fetch();
-        $captain_name = $acctData['captain_name'];
-        $captain_email = $acctData['email'];
+        if (!$acctData) {
+            // Account was deleted after login — force re-authentication
+            logoutTeamAccount();
+            $errors[] = 'Your account could not be found. Please sign in again.';
+        }
+        $captain_name = $acctData['captain_name'] ?? '';
+        $captain_email = $acctData['email'] ?? '';
         $captain_phone = $acctData['phone'] ?? '';
         $team_account_id = $_SESSION['team_account_id'];
     } else {
@@ -221,12 +226,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
     if (empty($errors)) {
         $regCode = generateRegistrationCode();
 
-        // Check if team_account_id column exists (requires migration Feature 8)
+        // Migration safety: check if team_account_id column exists in teams table.
+        // Added by Feature 8 in migration-features.sql. If not applied, fall back
+        // to INSERT without it (account link won't be saved, but team still registers).
         $hasAccountCol = false;
         try {
             $db->query("SELECT team_account_id FROM teams LIMIT 0");
             $hasAccountCol = true;
-        } catch (PDOException $e) { /* column not yet added */ }
+        } catch (PDOException $e) { /* Feature 8 migration not yet applied */ }
 
         if ($hasAccountCol) {
             $stmt = $db->prepare("

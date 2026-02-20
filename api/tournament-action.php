@@ -121,7 +121,8 @@ function generateBracket($db, $tournament) {
             break;
         case 'league':
             $encounters = $tournament['league_encounters'] ?? 1;
-            // Check if any teams have time slot (group) assignments
+            // League can run as single pool (no groups) or grouped (teams assigned to time slots).
+            // Detect by checking if any team has a time_slot_id assigned.
             $hasGroups = false;
             foreach ($teams as $t) {
                 if (!empty($t['time_slot_id'])) { $hasGroups = true; break; }
@@ -260,6 +261,20 @@ function generateDoubleElimination($db, $tournamentId, $teams) {
     ")->execute([$tournamentId]);
 }
 
+/**
+ * Generate a round-robin schedule for all teams in a single pool.
+ *
+ * Uses the "circle method" (polygon scheduling algorithm):
+ * - Team at index 0 is fixed; all others rotate clockwise each round.
+ * - For N teams: N-1 rounds, each with N/2 matches. If odd, a bye (null) is added.
+ * - Encounters > 1 repeats the full cycle (e.g., 2 = home & away).
+ *   On even encounters, home/away is swapped for fairness.
+ *
+ * @param PDO   $db           Database connection
+ * @param int   $tournamentId Tournament ID
+ * @param array $teams        Active team rows from DB
+ * @param int   $encounters   Number of times each pair plays (default 1)
+ */
 function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
     $teamCount = count($teams);
     $stmt = $db->prepare("
@@ -267,25 +282,26 @@ function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
         VALUES (?, ?, ?, 'round_robin', ?, ?, 'pending')
     ");
 
-    // Standard round-robin scheduling
     $teamIds = array_column($teams, 'id');
 
-    // If odd number of teams, add a "bye" placeholder
+    // Odd team count: add null placeholder so every round has equal pairs.
+    // Teams matched against null get a bye (skipped below).
     if ($teamCount % 2 !== 0) {
-        $teamIds[] = null; // bye
+        $teamIds[] = null;
         $teamCount++;
     }
 
-    $baseRounds = $teamCount - 1;
-    $matchesPerRound = $teamCount / 2;
+    $baseRounds = $teamCount - 1;       // Rounds needed for one full cycle
+    $matchesPerRound = $teamCount / 2;   // Matches per round
     $globalMatchNum = 0;
 
-    // Repeat scheduling for each encounter
+    // Outer loop: repeat full schedule for each encounter
     for ($enc = 0; $enc < $encounters; $enc++) {
         for ($round = 0; $round < $baseRounds; $round++) {
             $actualRound = ($enc * $baseRounds) + $round + 1;
 
             for ($match = 0; $match < $matchesPerRound; $match++) {
+                // Circle method: index 0 is fixed, others rotate
                 if ($match === 0) {
                     $home = 0;
                     $away = ($round % ($teamCount - 1)) + 1;
@@ -297,12 +313,11 @@ function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
                 $team1 = $teamIds[$home] ?? null;
                 $team2 = $teamIds[$away] ?? null;
 
-                // Skip byes
-                if ($team1 === null || $team2 === null) continue;
+                if ($team1 === null || $team2 === null) continue; // Skip byes
 
                 $globalMatchNum++;
 
-                // Alternate home/away for even encounters to balance fairness
+                // Swap home/away on odd encounters (2nd, 4th, etc.) for fairness
                 if ($enc % 2 === 1) {
                     $stmt->execute([$tournamentId, $actualRound, $globalMatchNum, $team2, $team1]);
                 } else {
@@ -312,16 +327,17 @@ function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
         }
     }
 
-    // Auto-create round label placeholders (if table exists)
+    // Create round label placeholders for custom labels/dates (migration Feature 6).
+    // Silently skip if round_labels table doesn't exist yet.
     try {
         $totalRounds = $baseRounds * $encounters;
         $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
         for ($r = 1; $r <= $totalRounds; $r++) {
             $labelStmt->execute([$tournamentId, $r]);
         }
-    } catch (PDOException $e) { /* table not yet created */ }
+    } catch (PDOException $e) { /* round_labels table not yet created — Feature 6 migration needed */ }
 
-    // Initialize standings
+    // Initialize standings row for each team (all zeros)
     $standingsStmt = $db->prepare("
         INSERT INTO round_robin_standings (tournament_id, team_id, wins, losses, draws, points_for, points_against, point_differential, ranking)
         VALUES (?, ?, 0, 0, 0, 0, 0, 0, NULL)
@@ -331,10 +347,27 @@ function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
     }
 }
 
+/**
+ * Generate a league schedule with per-group round-robins.
+ *
+ * Unlike generateRoundRobin() (single pool), this creates separate mini
+ * round-robins within each group (time slot). Teams only play others in
+ * their group. Matches and standings include time_slot_id for group filtering.
+ *
+ * Validation:
+ * - All teams must be assigned to a group (time_slot_id). Ungrouped teams cause an error.
+ * - Each group needs at least 2 teams.
+ * On validation failure, tournament status reverts to 'registration_closed'.
+ *
+ * @param PDO   $db           Database connection
+ * @param array $tournament   Full tournament row
+ * @param array $teams        Active team rows from DB
+ * @param int   $encounters   Number of times each pair plays within their group
+ */
 function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
     $tournamentId = $tournament['id'];
 
-    // Group teams by their time_slot_id (group)
+    // Partition teams into groups by their time_slot_id
     $groups = [];
     $ungrouped = [];
     foreach ($teams as $team) {
@@ -345,14 +378,14 @@ function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
         }
     }
 
-    // Validation: all teams must be in a group
+    // All teams must belong to a group for grouped league scheduling
     if (!empty($ungrouped)) {
         setFlash('error', 'All teams must be assigned to a group before generating the schedule. ' . count($ungrouped) . ' team(s) have no group assigned.');
         $db->prepare("UPDATE tournaments SET status = 'registration_closed' WHERE id = ?")->execute([$tournamentId]);
         return;
     }
 
-    // Validation: each group needs at least 2 teams
+    // Each group needs at least 2 teams to form matches
     foreach ($groups as $slotId => $groupTeams) {
         if (count($groupTeams) < 2) {
             $slotStmt = $db->prepare("SELECT slot_label FROM time_slots WHERE id = ?");
@@ -364,25 +397,26 @@ function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
         }
     }
 
+    // Prepared statements for batch inserts (reused across all groups)
     $matchStmt = $db->prepare("
         INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, time_slot_id, status)
         VALUES (?, ?, ?, 'round_robin', ?, ?, ?, 'pending')
     ");
-
     $standingsStmt = $db->prepare("
         INSERT INTO round_robin_standings (tournament_id, team_id, time_slot_id, wins, losses, draws, points_for, points_against, point_differential, ranking)
         VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, NULL)
     ");
 
-    // For each group, generate a round-robin with encounters
-    $globalMatchNumber = 0;
-    $maxRounds = 0;
+    // Generate per-group round-robin schedules using circle method
+    // (same algorithm as generateRoundRobin but scoped to each group)
+    $globalMatchNumber = 0;  // Sequential across all groups for unique match IDs
+    $maxRounds = 0;          // Track highest round count (groups may differ in size)
 
     foreach ($groups as $slotId => $groupTeams) {
         $teamIds = array_column($groupTeams, 'id');
         $teamCount = count($teamIds);
 
-        // Add bye placeholder for odd-count groups
+        // Odd team count in this group: add bye placeholder
         $working = $teamIds;
         if ($teamCount % 2 !== 0) {
             $working[] = null;
@@ -399,6 +433,7 @@ function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
                 $actualRound = ($enc * $baseRounds) + $round + 1;
 
                 for ($match = 0; $match < $matchesPerRound; $match++) {
+                    // Circle method: index 0 fixed, others rotate
                     if ($match === 0) {
                         $home = 0;
                         $away = ($round % ($teamCount - 1)) + 1;
@@ -410,12 +445,11 @@ function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
                     $team1 = $working[$home] ?? null;
                     $team2 = $working[$away] ?? null;
 
-                    // Skip byes
-                    if ($team1 === null || $team2 === null) continue;
+                    if ($team1 === null || $team2 === null) continue; // Skip byes
 
                     $globalMatchNumber++;
 
-                    // Alternate home/away for even encounters
+                    // Swap home/away on odd encounters for fairness
                     if ($enc % 2 === 1) {
                         $matchStmt->execute([
                             $tournamentId, $actualRound, $globalMatchNumber,
@@ -437,13 +471,14 @@ function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
         }
     }
 
-    // Auto-create round label placeholders (if table exists)
+    // Create round label placeholders (Feature 6 migration).
+    // Uses maxRounds across all groups so labels cover the largest group.
     try {
         $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
         for ($r = 1; $r <= $maxRounds; $r++) {
             $labelStmt->execute([$tournamentId, $r]);
         }
-    } catch (PDOException $e) { /* table not yet created */ }
+    } catch (PDOException $e) { /* round_labels table not yet created */ }
 }
 
 function generateGroupStage($db, $tournament, $teams) {
@@ -708,7 +743,9 @@ function recalculateStandings($db, $tournamentId) {
     $tournStmt->execute([$tournamentId]);
     $tournType = $tournStmt->fetchColumn();
 
-    // Check if standings have per-group data (two_stage or league with groups)
+    // Determine ranking strategy: per-group or tournament-wide.
+    // Two-stage and grouped leagues store time_slot_id in standings for per-group ranking.
+    // Non-grouped leagues and standalone round robins rank all teams together.
     $hasGroupStandings = false;
     if (in_array($tournType, ['two_stage', 'league'])) {
         $groupCheck = $db->prepare("SELECT COUNT(DISTINCT time_slot_id) FROM round_robin_standings WHERE tournament_id = ? AND time_slot_id IS NOT NULL");
@@ -717,7 +754,7 @@ function recalculateStandings($db, $tournamentId) {
     }
 
     if ($hasGroupStandings) {
-        // Rank per group (per time_slot_id)
+        // Rank teams within each group separately (by wins, then point differential, then points for)
         $groupsStmt = $db->prepare("SELECT DISTINCT time_slot_id FROM round_robin_standings WHERE tournament_id = ? AND time_slot_id IS NOT NULL");
         $groupsStmt->execute([$tournamentId]);
         foreach ($groupsStmt->fetchAll() as $group) {

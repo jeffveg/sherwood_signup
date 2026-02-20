@@ -51,13 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        // Check if league_encounters column exists (requires migration Feature 5)
+        // Migration safety: check if league_encounters column exists.
+        // This column is added by Feature 5 in migration-features.sql.
+        // If not yet applied, fall back to INSERT without it (defaults to 1 in schema).
         $hasEncountersCol = false;
         try {
             $colCheck = $db->query("SELECT league_encounters FROM tournaments LIMIT 0");
             $hasEncountersCol = true;
         } catch (PDOException $e) {
-            // Column doesn't exist yet — skip it
+            // Column doesn't exist — migration Feature 5 not yet applied
         }
 
         if ($hasEncountersCol) {
@@ -98,12 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $tournamentId = $db->lastInsertId();
 
-        // Create time slots if provided (for round_robin, two_stage, and league)
+        // Create time slots (groups) for tournament types that support them.
+        // Time slots define when/where teams play and serve as "groups" for two-stage/league.
+        // Slots with empty date or time are silently skipped (user may have added then cleared a row).
         if (in_array($tournament_type, ['round_robin', 'two_stage', 'league']) && !empty($_POST['slot_dates'])) {
             $slotDates = $_POST['slot_dates'];
-            $slotTimes = $_POST['slot_times'];
-            $slotLabels = $_POST['slot_labels'];
-            $slotMaxTeams = $_POST['slot_max_teams'];
+            $slotTimes = $_POST['slot_times'] ?? [];
+            $slotLabels = $_POST['slot_labels'] ?? [];
+            $slotMaxTeams = $_POST['slot_max_teams'] ?? [];
 
             $slotStmt = $db->prepare("
                 INSERT INTO time_slots (tournament_id, slot_date, slot_time, slot_label, max_teams)
@@ -117,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $slotDates[$i],
                         $slotTimes[$i],
                         $slotLabels[$i] ?? '',
-                        intval($slotMaxTeams[$i] ?? 3)
+                        max(1, intval($slotMaxTeams[$i] ?? 3))
                     ]);
                 }
             }
@@ -498,8 +502,20 @@ function addTimeSlot() {
     slotIndex++;
 }
 
-// --- Auto-Generate Time Slots ---
+// ============================================================
+// AUTO-GENERATE TIME SLOTS
+// Provides a quick way to create multiple time slots at once
+// based on a start date and frequency (weekly, biweekly, etc.).
+// Generated rows use the same form fields as manually-added rows,
+// so no backend changes are needed — the PHP POST handler processes
+// them identically.
+// ============================================================
 
+/**
+ * Toggle the auto-generate fields panel open/closed.
+ * When opening, pre-fills start date from the tournament start_date field
+ * and auto-selects the label prefix based on tournament type.
+ */
 function toggleAutoGenerate() {
     var fields = document.getElementById('auto-generate-fields');
     var isHidden = fields.classList.contains('hidden');
@@ -522,6 +538,10 @@ function toggleAutoGenerate() {
     }
 }
 
+/**
+ * Validate inputs and generate time slot rows.
+ * If rows already exist, shows a confirmation modal before replacing.
+ */
 function generateTimeSlots() {
     var startDate = document.getElementById('gen_start_date').value;
     var time = document.getElementById('gen_time').value;
@@ -562,6 +582,12 @@ function generateTimeSlots() {
     }
 }
 
+/**
+ * Create slot rows with calculated dates and labels.
+ * Each row matches the exact DOM structure of addTimeSlot() so the
+ * existing PHP POST handler processes them identically.
+ * On the edit page, includes hidden slot_ids[] with empty value (= new slot).
+ */
 function doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix) {
     var currentDate = new Date(startDate + 'T00:00:00');
     var container = document.getElementById('time-slots-container');
@@ -627,6 +653,10 @@ function doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefi
     }
 }
 
+/**
+ * Convert a 0-based index to letter label: 0=A, 1=B, ..., 25=Z, 26=AA, etc.
+ * Used for "Group A", "Group B" style labels.
+ */
 function numberToLetters(n) {
     var result = '';
     n = n + 1;

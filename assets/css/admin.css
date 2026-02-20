@@ -210,6 +210,10 @@
 
 /* ============================================================
    AUTO-GENERATE TIME SLOTS
+   Collapsible panel in tournament create/edit for bulk-creating
+   time slots from a start date + frequency. Dashed orange border
+   visually distinguishes it from the manual slot rows below.
+   JS: toggleAutoGenerate(), generateTimeSlots(), doGenerateSlots()
    ============================================================ */
 .auto-generate-panel {
     background: rgba(255, 161, 51, 0.05);

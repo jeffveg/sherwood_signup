@@ -76,6 +76,7 @@ foreach ($matches as $m) {
     $groupedMatchesByRound[$m['bracket_type']][$m['round']][] = $m;
 }
 
+// Feature flags: which tournament types support time slots and standings
 $hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $isRegistrationOpen = ($tournament['status'] === 'registration_open' && count($teams) < $tournament['max_teams']);
 
@@ -97,9 +98,10 @@ $typeLabels = [
 $isLeague = ($tournament['tournament_type'] === 'league');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 
-// Get round labels for league/round_robin
+// Custom round labels (e.g., "Week 1 - Jan 15" instead of "Round 1").
+// Feature 6 migration adds round_labels table; silently default to empty if not applied.
 $roundLabels = [];
-try { $roundLabels = getRoundLabels($db, $id); } catch (PDOException $e) { /* table not yet created */ }
+try { $roundLabels = getRoundLabels($db, $id); } catch (PDOException $e) { /* Feature 6 not applied */ }
 
 $pageTitle = $tournament['name'];
 $extraScripts = ['/assets/js/bracket.js?v=3'];

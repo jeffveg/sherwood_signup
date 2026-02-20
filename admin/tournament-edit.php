@@ -572,8 +572,14 @@ function addTimeSlot() {
     container.appendChild(row);
 }
 
-// --- Auto-Generate Time Slots ---
+// ============================================================
+// AUTO-GENERATE TIME SLOTS
+// Quick-create multiple time slots based on start date + frequency.
+// Generated rows use the same form fields as manual rows (including
+// empty slot_ids[] for new slots), so the PHP update handler works unchanged.
+// ============================================================
 
+/** Toggle auto-generate panel; pre-fills start date and label prefix. */
 function toggleAutoGenerate() {
     var fields = document.getElementById('auto-generate-fields');
     var isHidden = fields.classList.contains('hidden');
@@ -594,6 +600,7 @@ function toggleAutoGenerate() {
     }
 }
 
+/** Validate inputs; warn about existing DB-backed slots before replacing. */
 function generateTimeSlots() {
     var startDate = document.getElementById('gen_start_date').value;
     var time = document.getElementById('gen_time').value;
@@ -644,6 +651,7 @@ function generateTimeSlots() {
     }
 }
 
+/** Create slot rows with calculated dates. Includes empty slot_ids[] for new-slot detection. */
 function doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix) {
     var currentDate = new Date(startDate + 'T00:00:00');
     var container = document.getElementById('time-slots-container');
@@ -706,6 +714,7 @@ function doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefi
     }
 }
 
+/** Convert 0-based index to letters: 0=A, 1=B, ..., 25=Z, 26=AA. */
 function numberToLetters(n) {
     var result = '';
     n = n + 1;

@@ -32,14 +32,17 @@ if ($hasTimeSlots) {
     $timeSlots = $slotStmt->fetchAll();
 }
 
-// Fetch linked captain account (if any)
+// Fetch linked captain account for account-based tournaments.
+// The team_accounts table may not exist if Feature 7 migration hasn't been applied,
+// so we wrap in try-catch. If the account is found, the admin can view captain info
+// and reset the password from this page.
 $captainAccount = null;
 if (!empty($team['team_account_id'])) {
     try {
         $acctStmt = $db->prepare("SELECT id, email, captain_name, phone, created_at, last_login FROM team_accounts WHERE id = ?");
         $acctStmt->execute([$team['team_account_id']]);
         $captainAccount = $acctStmt->fetch();
-    } catch (PDOException $e) { /* table may not exist */ }
+    } catch (PDOException $e) { /* team_accounts table not yet created (Feature 7) */ }
 }
 
 $errors = [];
@@ -47,17 +50,22 @@ $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postAction = $_POST['form_action'] ?? 'update_team';
 
-    // Handle captain password reset
+    // Handle captain password reset (admin can reset a captain's password)
     if ($postAction === 'reset_password' && $captainAccount) {
         $newPassword = trim($_POST['new_password'] ?? '');
         if (strlen($newPassword) < 6) {
             $errors[] = 'New password must be at least 6 characters.';
         } else {
+            // Use PASSWORD_DEFAULT (currently bcrypt) — automatically uses secure cost factor
             $hash = password_hash($newPassword, PASSWORD_DEFAULT);
-            $db->prepare("UPDATE team_accounts SET password_hash = ? WHERE id = ?")->execute([$hash, $captainAccount['id']]);
-            setFlash('success', 'Captain account password has been reset.');
-            header("Location: /admin/team-edit.php?id={$teamId}");
-            exit;
+            if ($hash === false) {
+                $errors[] = 'Failed to hash password. Please try again.';
+            } else {
+                $db->prepare("UPDATE team_accounts SET password_hash = ? WHERE id = ?")->execute([$hash, $captainAccount['id']]);
+                setFlash('success', 'Captain account password has been reset.');
+                header("Location: /admin/team-edit.php?id={$teamId}");
+                exit;
+            }
         }
     }
 

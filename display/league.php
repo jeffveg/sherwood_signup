@@ -40,7 +40,9 @@ $slotsStmt->execute([$id]);
 $slotLookup = [];
 foreach ($slotsStmt->fetchAll() as $ts) { $slotLookup[$ts['id']] = $ts['slot_label']; }
 
-// Check if standings are grouped
+// Partition standings by group (time_slot_id) for per-group display.
+// If all standings have time_slot_id=NULL, they land in 'ungrouped' and display as a single table.
+// If any have a real time_slot_id, we show separate tables per group.
 $standingsByGroup = [];
 foreach ($standings as $s) {
     $gid = $s['time_slot_id'] ?? 'ungrouped';

@@ -78,10 +78,13 @@ $standingsStmt = $db->prepare("
 $standingsStmt->execute([$id]);
 $standings = $standingsStmt->fetchAll();
 
+// Feature flags based on tournament type
 $hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $isLeague = ($tournament['tournament_type'] === 'league');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
-// Check if league has grouped matches
+
+// Detect if this league has grouped matches (teams assigned to time slots).
+// This determines whether matches/standings are displayed per-group or as a flat list.
 $isLeagueWithGroups = false;
 if ($isLeague && !empty($matches)) {
     foreach ($matches as $m) {
