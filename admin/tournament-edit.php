@@ -67,25 +67,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        $stmt = $db->prepare("
-            UPDATE tournaments SET
-                tournament_number = ?, name = ?, description = ?, tournament_type = ?,
-                two_stage_elimination_type = ?, two_stage_advance_count = ?, league_encounters = ?,
-                status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
-                start_date = ?, end_date = ?, registration_deadline = ?,
-                location = ?, rules = ?
-            WHERE id = ?
-        ");
+        // Check if league_encounters column exists (requires migration Feature 5)
+        $hasEncountersCol = false;
+        try {
+            $colCheck = $db->query("SELECT league_encounters FROM tournaments LIMIT 0");
+            $hasEncountersCol = true;
+        } catch (PDOException $e) {
+            // Column doesn't exist yet — skip it
+        }
 
-        $stmt->execute([
-            $tournament_number, $name, $description, $tournament_type,
-            $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-            $two_stage_advance_count, $league_encounters,
-            $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
-            $start_date ?: null, $end_date ?: null,
-            $registration_deadline ? $registration_deadline . ':00' : null,
-            $location, $rules, $id
-        ]);
+        if ($hasEncountersCol) {
+            $stmt = $db->prepare("
+                UPDATE tournaments SET
+                    tournament_number = ?, name = ?, description = ?, tournament_type = ?,
+                    two_stage_elimination_type = ?, two_stage_advance_count = ?, league_encounters = ?,
+                    status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
+                    start_date = ?, end_date = ?, registration_deadline = ?,
+                    location = ?, rules = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                $tournament_number, $name, $description, $tournament_type,
+                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+                $two_stage_advance_count, $league_encounters,
+                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+                $start_date ?: null, $end_date ?: null,
+                $registration_deadline ? $registration_deadline . ':00' : null,
+                $location, $rules, $id
+            ]);
+        } else {
+            $stmt = $db->prepare("
+                UPDATE tournaments SET
+                    tournament_number = ?, name = ?, description = ?, tournament_type = ?,
+                    two_stage_elimination_type = ?, two_stage_advance_count = ?,
+                    status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
+                    start_date = ?, end_date = ?, registration_deadline = ?,
+                    location = ?, rules = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                $tournament_number, $name, $description, $tournament_type,
+                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+                $two_stage_advance_count,
+                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+                $start_date ?: null, $end_date ?: null,
+                $registration_deadline ? $registration_deadline . ':00' : null,
+                $location, $rules, $id
+            ]);
+        }
 
         // Update time slots: delete old, insert new
         if (in_array($tournament_type, ['round_robin', 'two_stage'])) {
@@ -346,7 +375,14 @@ include __DIR__ . '/../includes/header.php';
 
     <?php
     // Round Labels Editor (shown for league/round_robin after matches generated)
-    $existingRoundLabels = getRoundLabels($db, $id);
+    $existingRoundLabels = [];
+    try {
+        if (function_exists('getRoundLabels')) {
+            $existingRoundLabels = getRoundLabels($db, $id);
+        }
+    } catch (PDOException $e) {
+        // round_labels table doesn't exist yet — skip
+    }
     $hasMatches = $db->prepare("SELECT COUNT(*) FROM matches WHERE tournament_id = ? AND bracket_type = 'round_robin'");
     $hasMatches->execute([$id]);
     $matchCount = $hasMatches->fetchColumn();

@@ -50,7 +50,8 @@ $matchesStmt->execute([$team['tournament_id'], $teamId, $teamId]);
 $matches = $matchesStmt->fetchAll();
 
 // Get round labels if league/round_robin
-$roundLabels = getRoundLabels($db, $team['tournament_id']);
+$roundLabels = [];
+try { $roundLabels = getRoundLabels($db, $team['tournament_id']); } catch (PDOException $e) { /* table not yet created */ }
 $isLeague = ($team['tournament_type'] === 'league');
 
 $pageTitle = $team['team_name'] . ' - My Teams';

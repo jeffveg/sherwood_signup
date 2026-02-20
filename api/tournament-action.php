@@ -100,8 +100,10 @@ function generateBracket($db, $tournament) {
     // Set status to in_progress
     $db->prepare("UPDATE tournaments SET status = 'in_progress' WHERE id = ?")->execute([$tournamentId]);
 
-    // Also clear round labels
-    $db->prepare("DELETE FROM round_labels WHERE tournament_id = ?")->execute([$tournamentId]);
+    // Also clear round labels (if table exists)
+    try {
+        $db->prepare("DELETE FROM round_labels WHERE tournament_id = ?")->execute([$tournamentId]);
+    } catch (PDOException $e) { /* table not yet created */ }
 
     switch ($type) {
         case 'single_elimination':
@@ -301,12 +303,14 @@ function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
         }
     }
 
-    // Auto-create round label placeholders
-    $totalRounds = $baseRounds * $encounters;
-    $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
-    for ($r = 1; $r <= $totalRounds; $r++) {
-        $labelStmt->execute([$tournamentId, $r]);
-    }
+    // Auto-create round label placeholders (if table exists)
+    try {
+        $totalRounds = $baseRounds * $encounters;
+        $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
+        for ($r = 1; $r <= $totalRounds; $r++) {
+            $labelStmt->execute([$tournamentId, $r]);
+        }
+    } catch (PDOException $e) { /* table not yet created */ }
 
     // Initialize standings
     $standingsStmt = $db->prepare("

@@ -84,7 +84,8 @@ $advanceCount = $tournament['two_stage_advance_count'] ?? 1;
 $isTwoStage = ($tournament['tournament_type'] === 'two_stage');
 
 // Get round labels
-$roundLabels = getRoundLabels($db, $id);
+$roundLabels = [];
+try { $roundLabels = getRoundLabels($db, $id); } catch (PDOException $e) { /* table not yet created */ }
 
 // Build ordered group list for navigation
 $groupList = [];

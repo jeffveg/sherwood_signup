@@ -26,20 +26,24 @@ $redirect = "/admin/tournament-edit.php?id={$tournamentId}#round-labels";
 $rounds = $_POST['rounds'] ?? [];
 
 if (!empty($rounds) && is_array($rounds)) {
-    $upsertStmt = $db->prepare("
-        INSERT INTO round_labels (tournament_id, round_number, label, round_date)
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE label = VALUES(label), round_date = VALUES(round_date)
-    ");
+    try {
+        $upsertStmt = $db->prepare("
+            INSERT INTO round_labels (tournament_id, round_number, label, round_date)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE label = VALUES(label), round_date = VALUES(round_date)
+        ");
 
-    foreach ($rounds as $roundNumber => $data) {
-        $roundNum = intval($roundNumber);
-        $label = trim($data['label'] ?? '') ?: null;
-        $roundDate = !empty($data['round_date']) ? $data['round_date'] : null;
-        $upsertStmt->execute([$tournamentId, $roundNum, $label, $roundDate]);
+        foreach ($rounds as $roundNumber => $data) {
+            $roundNum = intval($roundNumber);
+            $label = trim($data['label'] ?? '') ?: null;
+            $roundDate = !empty($data['round_date']) ? $data['round_date'] : null;
+            $upsertStmt->execute([$tournamentId, $roundNum, $label, $roundDate]);
+        }
+
+        setFlash('success', 'Round labels saved successfully.');
+    } catch (PDOException $e) {
+        setFlash('error', 'Round labels table not found. Please run the database migration (Feature 6 in migration-features.sql).');
     }
-
-    setFlash('success', 'Round labels saved successfully.');
 } else {
     setFlash('info', 'No round label data to save.');
 }

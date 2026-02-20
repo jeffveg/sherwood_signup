@@ -82,7 +82,8 @@ $upcomingStmt->execute([$id]);
 $upcomingMatches = $upcomingStmt->fetchAll();
 
 // Get round labels
-$roundLabels = getRoundLabels($db, $id);
+$roundLabels = [];
+try { $roundLabels = getRoundLabels($db, $id); } catch (PDOException $e) { /* table not yet created */ }
 ?>
 <!DOCTYPE html>
 <html lang="en">

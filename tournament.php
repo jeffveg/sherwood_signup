@@ -98,7 +98,8 @@ $isLeague = ($tournament['tournament_type'] === 'league');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 
 // Get round labels for league/round_robin
-$roundLabels = getRoundLabels($db, $id);
+$roundLabels = [];
+try { $roundLabels = getRoundLabels($db, $id); } catch (PDOException $e) { /* table not yet created */ }
 
 $pageTitle = $tournament['name'];
 $extraScripts = ['/assets/js/bracket.js?v=3'];

@@ -51,23 +51,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        $stmt = $db->prepare("
-            INSERT INTO tournaments
-            (tournament_number, name, description, tournament_type, two_stage_elimination_type,
-             two_stage_advance_count, league_encounters, status, signup_mode, bracket_display, max_teams, min_teams,
-             start_date, end_date, registration_deadline, location, rules, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
+        // Check if league_encounters column exists (requires migration Feature 5)
+        $hasEncountersCol = false;
+        try {
+            $colCheck = $db->query("SELECT league_encounters FROM tournaments LIMIT 0");
+            $hasEncountersCol = true;
+        } catch (PDOException $e) {
+            // Column doesn't exist yet — skip it
+        }
 
-        $stmt->execute([
-            $tournament_number, $name, $description, $tournament_type,
-            $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-            $two_stage_advance_count, $league_encounters,
-            $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
-            $start_date ?: null, $end_date ?: null,
-            $registration_deadline ? $registration_deadline . ':00' : null,
-            $location, $rules, $_SESSION['admin_id']
-        ]);
+        if ($hasEncountersCol) {
+            $stmt = $db->prepare("
+                INSERT INTO tournaments
+                (tournament_number, name, description, tournament_type, two_stage_elimination_type,
+                 two_stage_advance_count, league_encounters, status, signup_mode, bracket_display, max_teams, min_teams,
+                 start_date, end_date, registration_deadline, location, rules, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $tournament_number, $name, $description, $tournament_type,
+                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+                $two_stage_advance_count, $league_encounters,
+                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+                $start_date ?: null, $end_date ?: null,
+                $registration_deadline ? $registration_deadline . ':00' : null,
+                $location, $rules, $_SESSION['admin_id']
+            ]);
+        } else {
+            $stmt = $db->prepare("
+                INSERT INTO tournaments
+                (tournament_number, name, description, tournament_type, two_stage_elimination_type,
+                 two_stage_advance_count, status, signup_mode, bracket_display, max_teams, min_teams,
+                 start_date, end_date, registration_deadline, location, rules, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $tournament_number, $name, $description, $tournament_type,
+                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+                $two_stage_advance_count,
+                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+                $start_date ?: null, $end_date ?: null,
+                $registration_deadline ? $registration_deadline . ':00' : null,
+                $location, $rules, $_SESSION['admin_id']
+            ]);
+        }
 
         $tournamentId = $db->lastInsertId();
 
