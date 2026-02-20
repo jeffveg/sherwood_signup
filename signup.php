@@ -47,7 +47,7 @@ if ($tournament['registration_deadline'] && strtotime($tournament['registration_
     exit;
 }
 
-$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage']);
+$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $timeSlots = [];
 if ($hasTimeSlots) {
     $slotStmt = $db->prepare("

@@ -98,8 +98,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $tournamentId = $db->lastInsertId();
 
-        // Create time slots if provided (for round_robin and two_stage)
-        if (in_array($tournament_type, ['round_robin', 'two_stage']) && !empty($_POST['slot_dates'])) {
+        // Create time slots if provided (for round_robin, two_stage, and league)
+        if (in_array($tournament_type, ['round_robin', 'two_stage', 'league']) && !empty($_POST['slot_dates'])) {
             $slotDates = $_POST['slot_dates'];
             $slotTimes = $_POST['slot_times'];
             $slotLabels = $_POST['slot_labels'];
@@ -371,7 +371,7 @@ document.getElementById('tournament_type').addEventListener('change', function()
     const hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
     bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
 
-    const needsSlots = (type === 'round_robin' || type === 'two_stage');
+    const needsSlots = (type === 'round_robin' || type === 'two_stage' || type === 'league');
     timeSlotsSection.classList.toggle('hidden', !needsSlots);
 
     // Update labels based on type (groups vs time slots)
@@ -382,7 +382,7 @@ document.getElementById('tournament_type').addEventListener('change', function()
     if (sectionTitle) sectionTitle.textContent = isTwoStage ? 'Groups' : 'Time Slots';
     if (sectionHint) sectionHint.textContent = isTwoStage
         ? 'Define groups for the group stage. Teams will sign up for a specific group.'
-        : 'Teams will sign up for specific time slots. Define the available slots below.';
+        : 'Define the available time slots below. Teams will select a slot when signing up.';
     if (addBtn) addBtn.textContent = isTwoStage ? '+ Add Group' : '+ Add Time Slot';
 
     // Add a default slot if none exist

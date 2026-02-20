@@ -78,9 +78,16 @@ $standingsStmt = $db->prepare("
 $standingsStmt->execute([$id]);
 $standings = $standingsStmt->fetchAll();
 
-$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage']);
+$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $isLeague = ($tournament['tournament_type'] === 'league');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
+// Check if league has grouped matches
+$isLeagueWithGroups = false;
+if ($isLeague && !empty($matches)) {
+    foreach ($matches as $m) {
+        if (!empty($m['time_slot_id'])) { $isLeagueWithGroups = true; break; }
+    }
+}
 
 $pageTitle = 'Manage: ' . $tournament['name'];
 $extraScripts = ['/assets/js/admin.js'];
@@ -321,6 +328,7 @@ include __DIR__ . '/../includes/header.php';
                 }
 
                 $isTwoStageManage = ($tournament['tournament_type'] === 'two_stage');
+                $showGroupedMatches = ($isTwoStageManage || $isLeagueWithGroups);
                 // Build slot label lookup for group headers
                 $slotLabelsMatch = [];
                 foreach ($timeSlots as $slot) {
@@ -333,15 +341,17 @@ include __DIR__ . '/../includes/header.php';
                         <?php
                         if ($bracketType === 'round_robin' && $isTwoStageManage) {
                             echo 'Group Stage';
+                        } elseif ($bracketType === 'round_robin' && $isLeagueWithGroups) {
+                            echo 'League Schedule';
                         } else {
                             echo h(ucwords(str_replace('_', ' ', $bracketType))) . ' Bracket';
                         }
                         ?>
                     </h4>
 
-                    <?php if ($bracketType === 'round_robin' && $isTwoStageManage): ?>
+                    <?php if ($bracketType === 'round_robin' && $showGroupedMatches): ?>
                         <?php
-                        // Organize RR matches by group for two-stage
+                        // Organize RR matches by group for two-stage or league with groups
                         $matchesByGroup = [];
                         foreach ($bracketMatches as $m) {
                             $gid = $m['time_slot_id'] ?? 'ungrouped';
@@ -467,7 +477,7 @@ include __DIR__ . '/../includes/header.php';
                 <div class="empty-state">
                     <p>Standings will appear after matches are generated and results recorded.</p>
                 </div>
-            <?php elseif ($tournament['tournament_type'] === 'two_stage'): ?>
+            <?php elseif ($tournament['tournament_type'] === 'two_stage' || $isLeagueWithGroups): ?>
                 <?php
                 // Group standings by time_slot_id for per-group display
                 $standingsByGroup = [];
@@ -521,9 +531,11 @@ include __DIR__ . '/../includes/header.php';
                     </div>
                 <?php endforeach; ?>
 
+                <?php if ($tournament['tournament_type'] === 'two_stage'): ?>
                 <p class="text-muted mt-1" style="font-size: 13px;">
                     &#9650; Green rows advance to the elimination stage (top <?php echo $advanceCount; ?> per group)
                 </p>
+                <?php endif; ?>
             <?php else: ?>
                 <div class="admin-table-wrapper standings-table">
                     <table>

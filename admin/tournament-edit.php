@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Update time slots: delete old, insert new
-        if (in_array($tournament_type, ['round_robin', 'two_stage'])) {
+        if (in_array($tournament_type, ['round_robin', 'two_stage', 'league'])) {
             // Only delete slots that don't have teams assigned
             $db->prepare("DELETE FROM time_slots WHERE tournament_id = ? AND id NOT IN (SELECT DISTINCT time_slot_id FROM teams WHERE time_slot_id IS NOT NULL AND tournament_id = ?)")->execute([$id, $id]);
 
@@ -288,7 +288,7 @@ include __DIR__ . '/../includes/header.php';
         </div>
 
         <!-- Time Slots / Groups -->
-        <div id="time-slots-section" class="form-section <?php echo !in_array($tournament['tournament_type'], ['round_robin', 'two_stage']) ? 'hidden' : ''; ?>">
+        <div id="time-slots-section" class="form-section <?php echo !in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']) ? 'hidden' : ''; ?>">
             <h3 class="form-section-title" id="slots-section-title"><?php echo $tournament['tournament_type'] === 'two_stage' ? 'Groups' : 'Time Slots'; ?></h3>
             <p id="slots-section-hint" style="margin-bottom: 20px; opacity: 0.7; font-size: 14px;">
                 <?php echo $tournament['tournament_type'] === 'two_stage'
@@ -445,7 +445,7 @@ include __DIR__ . '/../includes/header.php';
 document.getElementById('tournament_type').addEventListener('change', function() {
     const type = this.value;
     document.getElementById('two-stage-options').classList.toggle('hidden', type !== 'two_stage');
-    document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage');
+    document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage' && type !== 'league');
 
     // Show encounters option for league and round_robin
     document.getElementById('league-encounters-option').classList.toggle('hidden', type !== 'league' && type !== 'round_robin');

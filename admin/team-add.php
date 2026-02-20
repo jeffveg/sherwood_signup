@@ -21,7 +21,7 @@ if (!$tournament) {
 
 // Fetch time slots if needed
 $timeSlots = [];
-if (in_array($tournament['tournament_type'], ['round_robin', 'two_stage'])) {
+if (in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league'])) {
     $slotStmt = $db->prepare("
         SELECT ts.*, (SELECT COUNT(*) FROM teams WHERE time_slot_id = ts.id) as team_count
         FROM time_slots ts WHERE ts.tournament_id = ?

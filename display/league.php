@@ -23,16 +23,30 @@ if (!$tournament) {
     die('Tournament not found.');
 }
 
-// Get standings
+// Get standings (include time_slot_id for group display)
 $standingsStmt = $db->prepare("
     SELECT rrs.*, t.team_name, t.is_forfeit, t.logo_path
     FROM round_robin_standings rrs
     JOIN teams t ON rrs.team_id = t.id
     WHERE rrs.tournament_id = ?
-    ORDER BY rrs.ranking, rrs.wins DESC, rrs.point_differential DESC
+    ORDER BY rrs.time_slot_id, rrs.ranking, rrs.wins DESC, rrs.point_differential DESC
 ");
 $standingsStmt->execute([$id]);
 $standings = $standingsStmt->fetchAll();
+
+// Get time slots for group labels
+$slotsStmt = $db->prepare("SELECT id, slot_label FROM time_slots WHERE tournament_id = ?");
+$slotsStmt->execute([$id]);
+$slotLookup = [];
+foreach ($slotsStmt->fetchAll() as $ts) { $slotLookup[$ts['id']] = $ts['slot_label']; }
+
+// Check if standings are grouped
+$standingsByGroup = [];
+foreach ($standings as $s) {
+    $gid = $s['time_slot_id'] ?? 'ungrouped';
+    $standingsByGroup[$gid][] = $s;
+}
+$isGroupedDisplay = (count($standingsByGroup) > 1 || !isset($standingsByGroup['ungrouped']));
 
 // Get in-progress matches
 $inProgressStmt = $db->prepare("
@@ -139,46 +153,48 @@ try { $roundLabels = getRoundLabels($db, $id); } catch (PDOException $e) { /* ta
             </div>
             <?php endif; ?>
 
-            <!-- Standings Table -->
+            <!-- Standings Table(s) -->
             <?php if (!empty($standings)): ?>
-            <div class="display-card">
-                <h2>Rankings</h2>
-                <table class="display-table">
-                    <thead>
-                        <tr>
-                            <th class="rank-col">#</th>
-                            <th>Team</th>
-                            <th class="stat-col">W</th>
-                            <th class="stat-col">L</th>
-                            <th class="stat-col">D</th>
-                            <th class="stat-col">Tot Pts</th>
-                            <th class="stat-col">Avg</th>
-                            <th class="stat-col">PF</th>
-                            <th class="stat-col">PA</th>
-                            <th class="stat-col">+/-</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($standings as $s): ?>
-                        <?php $gamesPlayed = $s['wins'] + $s['losses'] + $s['draws']; ?>
-                        <tr>
-                            <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                            <td class="team-name"><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'sm'); ?></td>
-                            <td class="stat-col"><?php echo $s['wins']; ?></td>
-                            <td class="stat-col"><?php echo $s['losses']; ?></td>
-                            <td class="stat-col"><?php echo $s['draws']; ?></td>
-                            <td class="stat-col" style="font-weight: 700;"><?php echo $s['points_for']; ?></td>
-                            <td class="stat-col"><?php echo $gamesPlayed > 0 ? number_format($s['points_for'] / $gamesPlayed, 1) : '0.0'; ?></td>
-                            <td class="stat-col"><?php echo $s['points_for']; ?></td>
-                            <td class="stat-col"><?php echo $s['points_against']; ?></td>
-                            <td class="stat-col <?php echo $s['point_differential'] >= 0 ? 'diff-positive' : 'diff-negative'; ?>">
-                                <?php echo ($s['point_differential'] >= 0 ? '+' : '') . $s['point_differential']; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                <?php foreach ($standingsByGroup as $groupId => $groupStandings): ?>
+                <div class="display-card" style="margin-bottom: 16px;">
+                    <h2><?php echo $isGroupedDisplay ? htmlspecialchars($slotLookup[$groupId] ?? "Group $groupId") : 'Rankings'; ?></h2>
+                    <table class="display-table">
+                        <thead>
+                            <tr>
+                                <th class="rank-col">#</th>
+                                <th>Team</th>
+                                <th class="stat-col">W</th>
+                                <th class="stat-col">L</th>
+                                <th class="stat-col">D</th>
+                                <th class="stat-col">Tot Pts</th>
+                                <th class="stat-col">Avg</th>
+                                <th class="stat-col">PF</th>
+                                <th class="stat-col">PA</th>
+                                <th class="stat-col">+/-</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($groupStandings as $s): ?>
+                            <?php $gamesPlayed = $s['wins'] + $s['losses'] + $s['draws']; ?>
+                            <tr>
+                                <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
+                                <td class="team-name"><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'sm'); ?></td>
+                                <td class="stat-col"><?php echo $s['wins']; ?></td>
+                                <td class="stat-col"><?php echo $s['losses']; ?></td>
+                                <td class="stat-col"><?php echo $s['draws']; ?></td>
+                                <td class="stat-col" style="font-weight: 700;"><?php echo $s['points_for']; ?></td>
+                                <td class="stat-col"><?php echo $gamesPlayed > 0 ? number_format($s['points_for'] / $gamesPlayed, 1) : '0.0'; ?></td>
+                                <td class="stat-col"><?php echo $s['points_for']; ?></td>
+                                <td class="stat-col"><?php echo $s['points_against']; ?></td>
+                                <td class="stat-col <?php echo $s['point_differential'] >= 0 ? 'diff-positive' : 'diff-negative'; ?>">
+                                    <?php echo ($s['point_differential'] >= 0 ? '+' : '') . $s['point_differential']; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endforeach; ?>
             <?php endif; ?>
 
             <!-- Recent Results & Upcoming in 2-column grid -->

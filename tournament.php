@@ -76,7 +76,7 @@ foreach ($matches as $m) {
     $groupedMatchesByRound[$m['bracket_type']][$m['round']][] = $m;
 }
 
-$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage']);
+$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $isRegistrationOpen = ($tournament['status'] === 'registration_open' && count($teams) < $tournament['max_teams']);
 
 $statusLabels = [
@@ -640,23 +640,63 @@ include __DIR__ . '/includes/header.php';
     <!-- League Schedule Panel -->
     <div class="stage-panel" id="stage-schedule">
         <?php if (isset($groupedMatchesByRound['round_robin']) && !empty($groupedMatchesByRound['round_robin'])): ?>
-            <?php foreach ($groupedMatchesByRound['round_robin'] as $round => $roundMatches): ?>
-            <div class="card fade-in" style="margin-bottom: 16px;">
-                <h3><?php echo h($roundLabels[$round]['label'] ?? "Week {$round}"); ?><?php if (!empty($roundLabels[$round]['round_date'])): ?> <span class="round-label-date"><?php echo date('M j, Y', strtotime($roundLabels[$round]['round_date'])); ?></span><?php endif; ?></h3>
-                <?php foreach ($roundMatches as $match): ?>
-                <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
-                    <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                        <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
-                        <span class="bracket-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
+            <?php
+            // Check if league has groups (matches with time_slot_id)
+            $leagueHasGroups = false;
+            foreach ($groupedMatches['round_robin'] ?? [] as $m) {
+                if (!empty($m['time_slot_id'])) { $leagueHasGroups = true; break; }
+            }
+            $slotLookup = [];
+            foreach ($timeSlots as $ts) { $slotLookup[$ts['id']] = $ts['slot_label']; }
+            ?>
+            <?php if ($leagueHasGroups): ?>
+                <?php
+                // Group matches by time_slot_id, then by round
+                $matchesByGroup = [];
+                foreach ($groupedMatches['round_robin'] as $m) {
+                    $gid = $m['time_slot_id'] ?? 'ungrouped';
+                    $matchesByGroup[$gid][$m['round']][] = $m;
+                }
+                ?>
+                <?php foreach ($matchesByGroup as $groupId => $roundsInGroup): ?>
+                <div class="card fade-in" style="margin-bottom: 16px;">
+                    <h3><?php echo h($slotLookup[$groupId] ?? "Group $groupId"); ?></h3>
+                    <?php foreach ($roundsInGroup as $round => $roundMatches): ?>
+                    <h4 style="margin: 12px 0 6px 0; font-size: 0.95rem; color: var(--color-muted);"><?php echo h($roundLabels[$round]['label'] ?? "Week {$round}"); ?><?php if (!empty($roundLabels[$round]['round_date'])): ?> <span class="round-label-date"><?php echo date('M j, Y', strtotime($roundLabels[$round]['round_date'])); ?></span><?php endif; ?></h4>
+                    <?php foreach ($roundMatches as $match): ?>
+                    <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
+                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
+                            <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
+                            <span class="bracket-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
+                        </div>
+                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
+                            <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
+                            <span class="bracket-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
+                        </div>
                     </div>
-                    <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                        <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
-                        <span class="bracket-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
-                    </div>
+                    <?php endforeach; ?>
+                    <?php endforeach; ?>
                 </div>
                 <?php endforeach; ?>
-            </div>
-            <?php endforeach; ?>
+            <?php else: ?>
+                <?php foreach ($groupedMatchesByRound['round_robin'] as $round => $roundMatches): ?>
+                <div class="card fade-in" style="margin-bottom: 16px;">
+                    <h3><?php echo h($roundLabels[$round]['label'] ?? "Week {$round}"); ?><?php if (!empty($roundLabels[$round]['round_date'])): ?> <span class="round-label-date"><?php echo date('M j, Y', strtotime($roundLabels[$round]['round_date'])); ?></span><?php endif; ?></h3>
+                    <?php foreach ($roundMatches as $match): ?>
+                    <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
+                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
+                            <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
+                            <span class="bracket-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
+                        </div>
+                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
+                            <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
+                            <span class="bracket-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
         <?php else: ?>
             <div class="empty-state">
                 <p class="text-muted">The league schedule will appear after matches are generated.</p>
@@ -667,8 +707,22 @@ include __DIR__ . '/includes/header.php';
     <!-- League Standings Panel -->
     <div class="stage-panel" id="stage-standings">
         <?php if (!empty($standings)): ?>
-            <div class="card fade-in">
+            <?php
+            // Group standings by time_slot_id for grouped leagues
+            $leagueStandingsByGroup = [];
+            foreach ($standings as $s) {
+                $groupId = $s['time_slot_id'] ?? 'ungrouped';
+                $leagueStandingsByGroup[$groupId][] = $s;
+            }
+            $leagueIsGrouped = (count($leagueStandingsByGroup) > 1 || !isset($leagueStandingsByGroup['ungrouped']));
+            ?>
+            <?php foreach ($leagueStandingsByGroup as $groupId => $groupStandings): ?>
+            <div class="card fade-in" style="margin-bottom: 16px;">
+                <?php if ($leagueIsGrouped): ?>
+                <h3><?php echo h($slotLookup[$groupId] ?? 'League Standings'); ?></h3>
+                <?php else: ?>
                 <h3>League Standings</h3>
+                <?php endif; ?>
                 <div class="table-wrapper standings-table">
                     <table>
                         <thead>
@@ -686,7 +740,7 @@ include __DIR__ . '/includes/header.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($standings as $s): ?>
+                            <?php foreach ($groupStandings as $s): ?>
                             <?php $gamesPlayed = $s['wins'] + $s['losses'] + $s['draws']; ?>
                             <tr>
                                 <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
@@ -707,6 +761,7 @@ include __DIR__ . '/includes/header.php';
                     </table>
                 </div>
             </div>
+            <?php endforeach; ?>
         <?php else: ?>
             <div class="empty-state">
                 <p class="text-muted">Standings will appear after matches are generated and results recorded.</p>

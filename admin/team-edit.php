@@ -20,7 +20,7 @@ if (!$team) {
 }
 
 $tournamentId = $team['tid'];
-$hasTimeSlots = in_array($team['tournament_type'], ['round_robin', 'two_stage']);
+$hasTimeSlots = in_array($team['tournament_type'], ['round_robin', 'two_stage', 'league']);
 
 $timeSlots = [];
 if ($hasTimeSlots) {
