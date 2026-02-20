@@ -333,7 +333,8 @@ include __DIR__ . '/includes/header.php';
             </div>
 
             <!-- Login Panel -->
-            <div class="auth-panel <?php echo $activeAuthTab === 'login' ? 'active' : ''; ?>" id="auth-login">
+            <div class="auth-panel <?php echo $activeAuthTab === 'login' ? 'active' : ''; ?>" id="auth-login"
+                 style="<?php echo $activeAuthTab !== 'login' ? 'display:none;' : ''; ?>">
                 <form method="POST" action="">
                     <input type="hidden" name="action" value="captain_login">
                     <div class="form-group">
@@ -352,7 +353,8 @@ include __DIR__ . '/includes/header.php';
             </div>
 
             <!-- Register Panel -->
-            <div class="auth-panel <?php echo $activeAuthTab === 'register' ? 'active' : ''; ?>" id="auth-register">
+            <div class="auth-panel <?php echo $activeAuthTab === 'register' ? 'active' : ''; ?>" id="auth-register"
+                 style="<?php echo $activeAuthTab !== 'register' ? 'display:none;' : ''; ?>">
                 <form method="POST" action="">
                     <input type="hidden" name="action" value="captain_register">
                     <div class="form-group">
@@ -541,9 +543,14 @@ function selectTimeSlot(el, slotId) {
 
 function switchAuthTab(tab) {
     document.querySelectorAll('.auth-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.auth-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('.auth-panel').forEach(function(p) {
+        p.classList.remove('active');
+        p.style.display = 'none';
+    });
     document.querySelector('.auth-tab:nth-child(' + (tab === 'login' ? '1' : '2') + ')').classList.add('active');
-    document.getElementById('auth-' + tab).classList.add('active');
+    var activePanel = document.getElementById('auth-' + tab);
+    activePanel.classList.add('active');
+    activePanel.style.display = 'block';
 }
 
 // Form validation
