@@ -66,6 +66,21 @@ $success = false;
 $regCode = '';
 $activeAuthTab = 'login'; // default tab for account-based
 
+// Validate stale team sessions — if session says logged in but account doesn't exist, clear it
+if (isTeamLoggedIn()) {
+    try {
+        $acctCheck = $db->prepare("SELECT id FROM team_accounts WHERE id = ?");
+        $acctCheck->execute([$_SESSION['team_account_id']]);
+        if (!$acctCheck->fetch()) {
+            // Account no longer exists — clear stale session
+            logoutTeamAccount();
+        }
+    } catch (PDOException $e) {
+        // team_accounts table doesn't exist — clear session
+        logoutTeamAccount();
+    }
+}
+
 // ============================================================
 // Handle account-based actions (login / register)
 // ============================================================
@@ -134,6 +149,11 @@ if ($isAccountBased && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // Handle team registration (both simple + account-based)
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register_team') {
+    // Block unauthenticated submissions for account-based tournaments
+    if ($isAccountBased && !isTeamLoggedIn()) {
+        $errors[] = 'You must sign in or create an account before registering a team.';
+    }
+
     $team_name = trim($_POST['team_name'] ?? '');
     $time_slot_id = intval($_POST['time_slot_id'] ?? 0) ?: null;
 
