@@ -113,6 +113,11 @@ include __DIR__ . '/../includes/header.php';
                                 <div class="admin-table-actions">
                                     <a href="/admin/tournament-edit.php?id=<?php echo $t['id']; ?>" class="btn btn-secondary btn-small">Edit</a>
                                     <a href="/admin/tournament-manage.php?id=<?php echo $t['id']; ?>" class="btn btn-primary btn-small">Manage</a>
+                                    <form method="POST" action="/api/tournament-action.php" style="display: inline;">
+                                        <input type="hidden" name="tournament_id" value="<?php echo $t['id']; ?>">
+                                        <input type="hidden" name="action" value="delete">
+                                        <button type="submit" class="btn btn-danger btn-small" onclick="return confirm('PERMANENTLY DELETE &quot;<?php echo h($t['name']); ?>&quot; and ALL its data? This cannot be undone!')">Delete</button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>

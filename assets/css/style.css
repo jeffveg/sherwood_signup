@@ -494,6 +494,27 @@ tbody tr:last-child td {
 .type-double-elim   { color: var(--color-gold); }
 .type-round-robin   { color: var(--color-teal); }
 .type-two-stage     { color: #a67cd9; }
+.type-league        { color: #e06c75; }
+
+/* Team Logo */
+.team-logo {
+    border-radius: 50%;
+    object-fit: cover;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+/* Forfeit styling */
+.team-forfeit {
+    opacity: 0.6;
+}
+.team-forfeit s {
+    text-decoration: line-through;
+}
+.team-forfeit small {
+    color: var(--color-warning);
+    font-style: italic;
+}
 
 /* ============================================================
    PAGE HERO BANNER
@@ -631,6 +652,10 @@ tbody tr:last-child td {
     min-width: 200px;
 }
 
+.bracket-match-bye {
+    opacity: 0.55;
+}
+
 .bracket-match-header {
     background: rgba(255, 161, 51, 0.1);
     padding: 4px 10px;
@@ -686,9 +711,77 @@ tbody tr:last-child td {
     font-style: italic;
 }
 
-/* Bracket connector lines */
-.bracket-round .bracket-match {
+/* ============================================================
+   BRACKET TREE LAYOUT (visual flow with connectors)
+   ============================================================ */
+.bracket-tree {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding: 20px 10px;
+    min-width: max-content;
+}
+
+.bracket-tree .bracket-round {
+    display: flex;
+    flex-direction: column;
+    min-width: 260px;
+    gap: 0;
+    flex: 1;
+}
+
+.bracket-tree .bracket-round-title {
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.bracket-tree .bracket-round-matches {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    justify-content: space-around;
+    min-height: 0;
+}
+
+.bracket-match-wrapper {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
     position: relative;
+    flex: 1;
+    justify-content: center;
+    flex-direction: row;
+}
+
+.bracket-match-wrapper .bracket-match {
+    flex-shrink: 0;
+    width: 200px;
+}
+
+/* Horizontal connector line from match to right */
+.bracket-connector-right {
+    width: 30px;
+    height: 2px;
+    background: var(--color-brown-border);
+    flex-shrink: 0;
+}
+
+/* Horizontal connector line from left into match */
+.bracket-connector-left {
+    width: 30px;
+    height: 2px;
+    background: var(--color-brown-border);
+    flex-shrink: 0;
+}
+
+/* Vertical merge line (drawn by JS) */
+.bracket-vline {
+    position: absolute;
+    width: 2px;
+    background: var(--color-brown-border);
+    pointer-events: none;
+    z-index: 1;
 }
 
 /* ============================================================
@@ -814,6 +907,112 @@ tbody tr:last-child td {
     display: inline-block;
     margin: 20px 0;
     letter-spacing: 3px;
+}
+
+/* ============================================================
+   AUTH TABS (login/register on signup page)
+   ============================================================ */
+.auth-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 24px;
+    border-bottom: 3px solid var(--color-brown-border);
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 12px 24px;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-light-gray);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -3px;
+    transition: all var(--transition);
+    text-align: center;
+}
+
+.auth-tab:hover {
+    color: var(--color-orange);
+}
+
+.auth-tab.active {
+    color: var(--color-gold);
+    border-bottom-color: var(--color-gold);
+}
+
+.auth-panel {
+    display: none;
+    padding-top: 4px;
+}
+
+.auth-panel.active {
+    display: block;
+}
+
+/* Captain logged-in banner */
+.captain-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(45, 122, 58, 0.15);
+    border: 1px solid var(--color-success);
+    border-radius: var(--border-radius);
+    padding: 12px 18px;
+    margin-bottom: 24px;
+    font-size: 14px;
+}
+
+/* ============================================================
+   CAPTAIN DASHBOARD
+   ============================================================ */
+.captain-team-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(70, 36, 12, 0.3);
+}
+
+.captain-team-row:last-child {
+    border-bottom: none;
+}
+
+.captain-team-info {
+    flex: 1;
+}
+
+.captain-team-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .captain-team-row {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    .captain-team-actions {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+}
+
+/* ============================================================
+   ROUND LABEL DISPLAY
+   ============================================================ */
+.round-label-date {
+    font-size: 12px;
+    opacity: 0.5;
+    margin-left: 8px;
 }
 
 /* ============================================================

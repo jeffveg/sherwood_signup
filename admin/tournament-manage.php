@@ -41,8 +41,8 @@ $teams = $teamsStmt->fetchAll();
 // Fetch matches (include group label for two-stage)
 $matchesStmt = $db->prepare("
     SELECT m.*,
-           t1.team_name as team1_name,
-           t2.team_name as team2_name,
+           t1.team_name as team1_name, t1.is_forfeit as team1_forfeit, t1.logo_path as team1_logo,
+           t2.team_name as team2_name, t2.is_forfeit as team2_forfeit, t2.logo_path as team2_logo,
            w.team_name as winner_name,
            ts.slot_label as group_label
     FROM matches m
@@ -69,7 +69,7 @@ $timeSlots = $slotsStmt->fetchAll();
 
 // Fetch standings for round robin (include group info)
 $standingsStmt = $db->prepare("
-    SELECT rrs.*, t.team_name
+    SELECT rrs.*, t.team_name, t.is_forfeit, t.logo_path
     FROM round_robin_standings rrs
     JOIN teams t ON rrs.team_id = t.id
     WHERE rrs.tournament_id = ?
@@ -78,7 +78,19 @@ $standingsStmt = $db->prepare("
 $standingsStmt->execute([$id]);
 $standings = $standingsStmt->fetchAll();
 
-$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage']);
+// Feature flags based on tournament type
+$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
+$isLeague = ($tournament['tournament_type'] === 'league');
+$hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
+
+// Detect if this league has grouped matches (teams assigned to time slots).
+// This determines whether matches/standings are displayed per-group or as a flat list.
+$isLeagueWithGroups = false;
+if ($isLeague && !empty($matches)) {
+    foreach ($matches as $m) {
+        if (!empty($m['time_slot_id'])) { $isLeagueWithGroups = true; break; }
+    }
+}
 
 $pageTitle = 'Manage: ' . $tournament['name'];
 $extraScripts = ['/assets/js/admin.js'];
@@ -121,7 +133,7 @@ include __DIR__ . '/../includes/header.php';
         <?php if ($hasTimeSlots): ?>
         <button class="admin-tab" data-tab="timeslots"><?php echo $tournament['tournament_type'] === 'two_stage' ? 'Groups' : 'Time Slots'; ?></button>
         <?php endif; ?>
-        <?php if (in_array($tournament['tournament_type'], ['round_robin', 'two_stage'])): ?>
+        <?php if ($hasStandings): ?>
         <button class="admin-tab" data-tab="standings">Standings</button>
         <?php endif; ?>
     </div>
@@ -185,6 +197,14 @@ include __DIR__ . '/../includes/header.php';
                         </button>
                     </form>
                 <?php endif; ?>
+
+                <form method="POST" action="/api/tournament-action.php" style="display: inline; margin-left: auto;">
+                    <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
+                    <input type="hidden" name="action" value="delete">
+                    <button type="submit" class="btn btn-danger btn-small" onclick="return confirm('PERMANENTLY DELETE this tournament and ALL its teams, matches, and standings? This cannot be undone!')">
+                        Delete Tournament
+                    </button>
+                </form>
             </div>
         </div>
 
@@ -241,7 +261,7 @@ include __DIR__ . '/../includes/header.php';
                                            data-team-id="<?php echo $team['id']; ?>"
                                            onchange="updateSeed(this)">
                                 </td>
-                                <td><strong><?php echo h($team['team_name']); ?></strong></td>
+                                <td><strong><?php echo teamNameHtml($team['team_name'], $team['is_forfeit'], $team['logo_path'], 'sm'); ?></strong></td>
                                 <td><?php echo h($team['captain_name']); ?></td>
                                 <td><a href="mailto:<?php echo h($team['captain_email']); ?>"><?php echo h($team['captain_email']); ?></a></td>
                                 <?php if ($hasTimeSlots): ?>
@@ -259,6 +279,21 @@ include __DIR__ . '/../includes/header.php';
                                 <td>
                                     <div class="admin-table-actions">
                                         <a href="/admin/team-edit.php?id=<?php echo $team['id']; ?>" class="btn btn-secondary btn-small">Edit</a>
+                                        <?php if (!$team['is_forfeit']): ?>
+                                        <form method="POST" action="/api/team-action.php" style="display: inline;">
+                                            <input type="hidden" name="team_id" value="<?php echo $team['id']; ?>">
+                                            <input type="hidden" name="action" value="forfeit">
+                                            <input type="hidden" name="redirect" value="/admin/tournament-manage.php?id=<?php echo $id; ?>">
+                                            <button type="submit" class="btn btn-secondary btn-small" onclick="return confirm('Forfeit this team? Their pending matches will be resolved as losses.')" style="color: var(--color-warning);">Forfeit</button>
+                                        </form>
+                                        <?php else: ?>
+                                        <form method="POST" action="/api/team-action.php" style="display: inline;">
+                                            <input type="hidden" name="team_id" value="<?php echo $team['id']; ?>">
+                                            <input type="hidden" name="action" value="unforfeit">
+                                            <input type="hidden" name="redirect" value="/admin/tournament-manage.php?id=<?php echo $id; ?>">
+                                            <button type="submit" class="btn btn-secondary btn-small">Unforfeit</button>
+                                        </form>
+                                        <?php endif; ?>
                                         <form method="POST" action="/api/team-action.php" style="display: inline;">
                                             <input type="hidden" name="team_id" value="<?php echo $team['id']; ?>">
                                             <input type="hidden" name="action" value="withdraw">
@@ -296,6 +331,7 @@ include __DIR__ . '/../includes/header.php';
                 }
 
                 $isTwoStageManage = ($tournament['tournament_type'] === 'two_stage');
+                $showGroupedMatches = ($isTwoStageManage || $isLeagueWithGroups);
                 // Build slot label lookup for group headers
                 $slotLabelsMatch = [];
                 foreach ($timeSlots as $slot) {
@@ -308,15 +344,17 @@ include __DIR__ . '/../includes/header.php';
                         <?php
                         if ($bracketType === 'round_robin' && $isTwoStageManage) {
                             echo 'Group Stage';
+                        } elseif ($bracketType === 'round_robin' && $isLeagueWithGroups) {
+                            echo 'League Schedule';
                         } else {
                             echo h(ucwords(str_replace('_', ' ', $bracketType))) . ' Bracket';
                         }
                         ?>
                     </h4>
 
-                    <?php if ($bracketType === 'round_robin' && $isTwoStageManage): ?>
+                    <?php if ($bracketType === 'round_robin' && $showGroupedMatches): ?>
                         <?php
-                        // Organize RR matches by group for two-stage
+                        // Organize RR matches by group for two-stage or league with groups
                         $matchesByGroup = [];
                         foreach ($bracketMatches as $m) {
                             $gid = $m['time_slot_id'] ?? 'ungrouped';
@@ -336,8 +374,10 @@ include __DIR__ . '/../includes/header.php';
                             ksort($roundsInGroup);
                             ?>
                             <?php foreach ($roundsInGroup as $round => $roundMatches): ?>
+                                <?php usort($roundMatches, function($a, $b) { return ($a['status'] === 'completed') - ($b['status'] === 'completed') ?: $a['match_number'] - $b['match_number']; }); ?>
                                 <h4 class="text-muted" style="font-size: 13px; margin: 10px 0 8px;">Round <?php echo abs($round); ?></h4>
                                 <?php foreach ($roundMatches as $match): ?>
+                                    <?php if (!$match['team1_id'] && !$match['team2_id'] && $match['status'] !== 'completed') continue; ?>
                                     <?php include __DIR__ . '/../includes/_match-editor.php'; ?>
                                 <?php endforeach; ?>
                             <?php endforeach; ?>
@@ -352,8 +392,10 @@ include __DIR__ . '/../includes/header.php';
                         ksort($rounds);
                         ?>
                         <?php foreach ($rounds as $round => $roundMatches): ?>
-                            <h4 class="text-muted" style="font-size: 13px; margin: 15px 0 8px;">Round <?php echo abs($round); ?></h4>
+                            <?php usort($roundMatches, function($a, $b) { return ($a['status'] === 'completed') - ($b['status'] === 'completed') ?: $a['match_number'] - $b['match_number']; }); ?>
+                            <h4 class="text-muted" style="font-size: 13px; margin: 15px 0 8px;"><?php echo $isLeague ? 'Week' : 'Round'; ?> <?php echo abs($round); ?></h4>
                             <?php foreach ($roundMatches as $match): ?>
+                                <?php if (!$match['team1_id'] && !$match['team2_id'] && $match['status'] !== 'completed') continue; ?>
                                 <?php include __DIR__ . '/../includes/_match-editor.php'; ?>
                             <?php endforeach; ?>
                         <?php endforeach; ?>
@@ -416,12 +458,16 @@ include __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 
     <!-- STANDINGS TAB -->
-    <?php if (in_array($tournament['tournament_type'], ['round_robin', 'two_stage'])): ?>
+    <?php if ($hasStandings): ?>
     <div class="admin-tab-panel" id="tab-standings">
         <div class="form-section">
             <div class="flex-between mb-2">
                 <h3 class="form-section-title" style="margin-bottom: 0;">
-                    <?php echo $tournament['tournament_type'] === 'two_stage' ? 'Group Stage Standings' : 'Round Robin Standings'; ?>
+                    <?php
+                    if ($tournament['tournament_type'] === 'two_stage') echo 'Group Stage Standings';
+                    elseif ($isLeague) echo 'League Standings';
+                    else echo 'Round Robin Standings';
+                    ?>
                 </h3>
                 <form method="POST" action="/api/tournament-action.php" style="display: inline;">
                     <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
@@ -434,7 +480,7 @@ include __DIR__ . '/../includes/header.php';
                 <div class="empty-state">
                     <p>Standings will appear after matches are generated and results recorded.</p>
                 </div>
-            <?php elseif ($tournament['tournament_type'] === 'two_stage'): ?>
+            <?php elseif ($tournament['tournament_type'] === 'two_stage' || $isLeagueWithGroups): ?>
                 <?php
                 // Group standings by time_slot_id for per-group display
                 $standingsByGroup = [];
@@ -472,7 +518,7 @@ include __DIR__ . '/../includes/header.php';
                                 <?php foreach ($groupStandings as $s): ?>
                                 <tr class="<?php echo ($s['ranking'] ?? 999) <= $advanceCount ? 'advancing' : ''; ?>">
                                     <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                                    <td><strong><?php echo h($s['team_name']); ?></strong></td>
+                                    <td><strong><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'xs'); ?></strong></td>
                                     <td><?php echo $s['wins']; ?></td>
                                     <td><?php echo $s['losses']; ?></td>
                                     <td><?php echo $s['draws']; ?></td>
@@ -488,9 +534,11 @@ include __DIR__ . '/../includes/header.php';
                     </div>
                 <?php endforeach; ?>
 
+                <?php if ($tournament['tournament_type'] === 'two_stage'): ?>
                 <p class="text-muted mt-1" style="font-size: 13px;">
                     &#9650; Green rows advance to the elimination stage (top <?php echo $advanceCount; ?> per group)
                 </p>
+                <?php endif; ?>
             <?php else: ?>
                 <div class="admin-table-wrapper standings-table">
                     <table>
@@ -501,6 +549,7 @@ include __DIR__ . '/../includes/header.php';
                                 <th>W</th>
                                 <th>L</th>
                                 <th>D</th>
+                                <?php if ($isLeague): ?><th>Tot Pts</th><th>Avg</th><?php endif; ?>
                                 <th>PF</th>
                                 <th>PA</th>
                                 <th>+/-</th>
@@ -508,12 +557,17 @@ include __DIR__ . '/../includes/header.php';
                         </thead>
                         <tbody>
                             <?php foreach ($standings as $s): ?>
+                            <?php $gamesPlayed = $s['wins'] + $s['losses'] + $s['draws']; ?>
                             <tr>
                                 <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                                <td><strong><?php echo h($s['team_name']); ?></strong></td>
+                                <td><strong><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'xs'); ?></strong></td>
                                 <td><?php echo $s['wins']; ?></td>
                                 <td><?php echo $s['losses']; ?></td>
                                 <td><?php echo $s['draws']; ?></td>
+                                <?php if ($isLeague): ?>
+                                <td><strong><?php echo $s['points_for']; ?></strong></td>
+                                <td><?php echo $gamesPlayed > 0 ? number_format($s['points_for'] / $gamesPlayed, 1) : '0.0'; ?></td>
+                                <?php endif; ?>
                                 <td><?php echo $s['points_for']; ?></td>
                                 <td><?php echo $s['points_against']; ?></td>
                                 <td style="color: <?php echo $s['point_differential'] >= 0 ? 'var(--color-success)' : 'var(--color-danger)'; ?>">

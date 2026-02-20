@@ -39,6 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tournament_type = $_POST['tournament_type'] ?? '';
     $two_stage_elimination_type = $_POST['two_stage_elimination_type'] ?? null;
     $two_stage_advance_count = intval($_POST['two_stage_advance_count'] ?? 4);
+    $league_encounters = intval($_POST['league_encounters'] ?? 1);
+    if ($league_encounters < 1) $league_encounters = 1;
     $description = trim($_POST['description'] ?? '');
     $max_teams = intval($_POST['max_teams'] ?? 16);
     $min_teams = intval($_POST['min_teams'] ?? 2);
@@ -48,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $location = trim($_POST['location'] ?? '');
     $rules = trim($_POST['rules'] ?? '');
     $signup_mode = $_POST['signup_mode'] ?? 'simple_form';
+    $bracket_display = $_POST['bracket_display'] ?? 'full';
     $status = $_POST['status'] ?? 'draft';
 
     // Validation
@@ -64,27 +67,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        $stmt = $db->prepare("
-            UPDATE tournaments SET
-                tournament_number = ?, name = ?, description = ?, tournament_type = ?,
-                two_stage_elimination_type = ?, two_stage_advance_count = ?,
-                status = ?, signup_mode = ?, max_teams = ?, min_teams = ?,
-                start_date = ?, end_date = ?, registration_deadline = ?,
-                location = ?, rules = ?
-            WHERE id = ?
-        ");
+        // Check if league_encounters column exists (requires migration Feature 5)
+        $hasEncountersCol = false;
+        try {
+            $colCheck = $db->query("SELECT league_encounters FROM tournaments LIMIT 0");
+            $hasEncountersCol = true;
+        } catch (PDOException $e) {
+            // Column doesn't exist yet — skip it
+        }
 
-        $stmt->execute([
-            $tournament_number, $name, $description, $tournament_type,
-            $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-            $two_stage_advance_count, $status, $signup_mode, $max_teams, $min_teams,
-            $start_date ?: null, $end_date ?: null,
-            $registration_deadline ? $registration_deadline . ':00' : null,
-            $location, $rules, $id
-        ]);
+        if ($hasEncountersCol) {
+            $stmt = $db->prepare("
+                UPDATE tournaments SET
+                    tournament_number = ?, name = ?, description = ?, tournament_type = ?,
+                    two_stage_elimination_type = ?, two_stage_advance_count = ?, league_encounters = ?,
+                    status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
+                    start_date = ?, end_date = ?, registration_deadline = ?,
+                    location = ?, rules = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                $tournament_number, $name, $description, $tournament_type,
+                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+                $two_stage_advance_count, $league_encounters,
+                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+                $start_date ?: null, $end_date ?: null,
+                $registration_deadline ? $registration_deadline . ':00' : null,
+                $location, $rules, $id
+            ]);
+        } else {
+            $stmt = $db->prepare("
+                UPDATE tournaments SET
+                    tournament_number = ?, name = ?, description = ?, tournament_type = ?,
+                    two_stage_elimination_type = ?, two_stage_advance_count = ?,
+                    status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
+                    start_date = ?, end_date = ?, registration_deadline = ?,
+                    location = ?, rules = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                $tournament_number, $name, $description, $tournament_type,
+                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+                $two_stage_advance_count,
+                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+                $start_date ?: null, $end_date ?: null,
+                $registration_deadline ? $registration_deadline . ':00' : null,
+                $location, $rules, $id
+            ]);
+        }
 
         // Update time slots: delete old, insert new
-        if (in_array($tournament_type, ['round_robin', 'two_stage'])) {
+        if (in_array($tournament_type, ['round_robin', 'two_stage', 'league'])) {
             // Only delete slots that don't have teams assigned
             $db->prepare("DELETE FROM time_slots WHERE tournament_id = ? AND id NOT IN (SELECT DISTINCT time_slot_id FROM teams WHERE time_slot_id IS NOT NULL AND tournament_id = ?)")->execute([$id, $id]);
 
@@ -184,6 +217,7 @@ include __DIR__ . '/../includes/header.php';
                     <option value="double_elimination" <?php echo $tournament['tournament_type'] === 'double_elimination' ? 'selected' : ''; ?>>Double Elimination</option>
                     <option value="round_robin" <?php echo $tournament['tournament_type'] === 'round_robin' ? 'selected' : ''; ?>>Round Robin</option>
                     <option value="two_stage" <?php echo $tournament['tournament_type'] === 'two_stage' ? 'selected' : ''; ?>>Two Stage</option>
+                    <option value="league" <?php echo $tournament['tournament_type'] === 'league' ? 'selected' : ''; ?>>League (Multi-Day/Week)</option>
                 </select>
             </div>
 
@@ -201,6 +235,18 @@ include __DIR__ . '/../includes/header.php';
                         <input type="number" id="two_stage_advance_count" name="two_stage_advance_count"
                                class="form-control" value="<?php echo h($tournament['two_stage_advance_count']); ?>" min="1">
                         <span class="form-hint">Number of top teams from each group that advance to elimination</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- League Encounters -->
+            <div id="league-encounters-option" class="<?php echo !in_array($tournament['tournament_type'], ['league', 'round_robin']) ? 'hidden' : ''; ?>">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="league_encounters">Encounters (Meetings)</label>
+                        <input type="number" id="league_encounters" name="league_encounters"
+                               class="form-control" value="<?php echo h($tournament['league_encounters'] ?? 1); ?>" min="1" max="10">
+                        <span class="form-hint">How many times each team plays every other team (e.g., 2 = home &amp; away)</span>
                     </div>
                 </div>
             </div>
@@ -242,13 +288,77 @@ include __DIR__ . '/../includes/header.php';
         </div>
 
         <!-- Time Slots / Groups -->
-        <div id="time-slots-section" class="form-section <?php echo !in_array($tournament['tournament_type'], ['round_robin', 'two_stage']) ? 'hidden' : ''; ?>">
+        <div id="time-slots-section" class="form-section <?php echo !in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']) ? 'hidden' : ''; ?>">
             <h3 class="form-section-title" id="slots-section-title"><?php echo $tournament['tournament_type'] === 'two_stage' ? 'Groups' : 'Time Slots'; ?></h3>
             <p id="slots-section-hint" style="margin-bottom: 20px; opacity: 0.7; font-size: 14px;">
                 <?php echo $tournament['tournament_type'] === 'two_stage'
                     ? 'Define groups for the group stage. Teams will sign up for a specific group.'
                     : 'Manage time slots for team sign-ups.'; ?>
             </p>
+
+            <!-- Auto-Generate Time Slots -->
+            <div class="auto-generate-panel">
+                <button type="button" class="btn btn-secondary btn-small" id="toggle-auto-generate"
+                        onclick="toggleAutoGenerate()">
+                    <?php echo $tournament['tournament_type'] === 'two_stage' ? '&#9881; Auto-Generate Groups' : '&#9881; Auto-Generate Slots'; ?>
+                </button>
+
+                <div id="auto-generate-fields" class="hidden" style="margin-top: 16px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gen_start_date">Start Date</label>
+                            <input type="date" id="gen_start_date" class="form-control">
+                            <span class="form-hint">Defaults to tournament start date</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gen_time">Time of Day</label>
+                            <input type="time" id="gen_time" class="form-control" value="10:00">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gen_frequency">Frequency</label>
+                            <select id="gen_frequency" class="form-control">
+                                <option value="7">Weekly</option>
+                                <option value="14">Biweekly (Every 2 Weeks)</option>
+                                <option value="21">Every 3 Weeks</option>
+                                <option value="28">Monthly (Every 4 Weeks)</option>
+                                <option value="1">Daily</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="gen_count">Number of Slots</label>
+                            <input type="number" id="gen_count" class="form-control" value="8" min="1" max="52">
+                            <span class="form-hint">How many time slots to create</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gen_max_teams">Max Teams Per Slot</label>
+                            <input type="number" id="gen_max_teams" class="form-control" value="3" min="1" max="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="gen_label_prefix">Label Style</label>
+                            <select id="gen_label_prefix" class="form-control">
+                                <option value="week" <?php echo $tournament['tournament_type'] === 'league' ? 'selected' : ''; ?>>Week 1, Week 2...</option>
+                                <option value="round" <?php echo $tournament['tournament_type'] === 'round_robin' ? 'selected' : ''; ?>>Round 1, Round 2...</option>
+                                <option value="session">Session 1, Session 2...</option>
+                                <option value="group" <?php echo $tournament['tournament_type'] === 'two_stage' ? 'selected' : ''; ?>>Group A, Group B...</option>
+                                <option value="date">Use date as label</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 12px; display: flex; gap: 10px;">
+                        <button type="button" class="btn btn-primary btn-small" onclick="generateTimeSlots()">
+                            Generate Slots
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="toggleAutoGenerate()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div id="time-slots-container">
                 <?php foreach ($timeSlots as $slot): ?>
@@ -304,6 +414,17 @@ include __DIR__ . '/../includes/header.php';
                     </select>
                 </div>
             </div>
+            <div id="bracket-display-option" class="form-row <?php echo !in_array($tournament['tournament_type'], ['single_elimination', 'double_elimination', 'two_stage']) ? 'hidden' : ''; ?>">
+                <div class="form-group">
+                    <label for="bracket_display">Bracket Display</label>
+                    <select id="bracket_display" name="bracket_display" class="form-control">
+                        <option value="full" <?php echo ($tournament['bracket_display'] ?? 'full') === 'full' ? 'selected' : ''; ?>>Full (show all rounds including byes)</option>
+                        <option value="compact" <?php echo ($tournament['bracket_display'] ?? '') === 'compact' ? 'selected' : ''; ?>>Compact (hide bye rounds, fits on one page)</option>
+                    </select>
+                    <span class="form-hint">Compact hides first-round byes so seeded teams start in the next round</span>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label for="rules">Rules</label>
                 <textarea id="rules" name="rules" class="form-control"><?php echo h($tournament['rules']); ?></textarea>
@@ -315,13 +436,88 @@ include __DIR__ . '/../includes/header.php';
             <button type="submit" class="btn btn-primary btn-large">Save Changes</button>
         </div>
     </form>
+
+    <?php
+    // Round Labels Editor (shown for league/round_robin after matches generated)
+    $existingRoundLabels = [];
+    try {
+        if (function_exists('getRoundLabels')) {
+            $existingRoundLabels = getRoundLabels($db, $id);
+        }
+    } catch (PDOException $e) {
+        // round_labels table doesn't exist yet — skip
+    }
+    $hasMatches = $db->prepare("SELECT COUNT(*) FROM matches WHERE tournament_id = ? AND bracket_type = 'round_robin'");
+    $hasMatches->execute([$id]);
+    $matchCount = $hasMatches->fetchColumn();
+
+    if ($matchCount > 0 && in_array($tournament['tournament_type'], ['league', 'round_robin'])):
+        // Get distinct rounds from matches
+        $roundsStmt = $db->prepare("SELECT DISTINCT round FROM matches WHERE tournament_id = ? AND bracket_type = 'round_robin' ORDER BY round");
+        $roundsStmt->execute([$id]);
+        $rounds = $roundsStmt->fetchAll(PDO::FETCH_COLUMN);
+    ?>
+    <div class="form-section" id="round-labels" style="margin-top: 30px;">
+        <h3 class="form-section-title">Round Labels</h3>
+        <p style="margin-bottom: 20px; opacity: 0.7; font-size: 14px;">
+            Customize the label and date for each round/week. Leave blank to use the default ("Week X" for leagues, "Round X" for round robin).
+        </p>
+
+        <form method="POST" action="/api/round-labels.php">
+            <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">Round</th>
+                            <th>Custom Label</th>
+                            <th style="width: 180px;">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($rounds as $round): ?>
+                        <?php $label = $existingRoundLabels[$round] ?? []; ?>
+                        <tr>
+                            <td style="font-weight: 700; color: var(--color-gold);"><?php echo $round; ?></td>
+                            <td>
+                                <input type="text" name="rounds[<?php echo $round; ?>][label]" class="form-control"
+                                       value="<?php echo h($label['label'] ?? ''); ?>"
+                                       placeholder="<?php echo $tournament['tournament_type'] === 'league' ? "Week {$round}" : "Round {$round}"; ?>"
+                                       style="padding: 8px 12px;">
+                            </td>
+                            <td>
+                                <input type="date" name="rounds[<?php echo $round; ?>][round_date]" class="form-control"
+                                       value="<?php echo h($label['round_date'] ?? ''); ?>"
+                                       style="padding: 8px 12px;">
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 16px;">
+                <button type="submit" class="btn btn-primary btn-small">Save Round Labels</button>
+            </div>
+        </form>
+    </div>
+    <?php endif; ?>
 </div>
 
 <script>
 document.getElementById('tournament_type').addEventListener('change', function() {
     const type = this.value;
     document.getElementById('two-stage-options').classList.toggle('hidden', type !== 'two_stage');
-    document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage');
+    document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage' && type !== 'league');
+
+    // Show encounters option for league and round_robin
+    document.getElementById('league-encounters-option').classList.toggle('hidden', type !== 'league' && type !== 'round_robin');
+
+    // Show bracket display option for elimination types
+    var bracketDisplayOpt = document.getElementById('bracket-display-option');
+    var hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
+    bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
 
     // Update labels based on type (groups vs time slots)
     var isTwoStage = (type === 'two_stage');
@@ -333,6 +529,17 @@ document.getElementById('tournament_type').addEventListener('change', function()
         ? 'Define groups for the group stage. Teams will sign up for a specific group.'
         : 'Manage time slots for team sign-ups.';
     if (addBtn) addBtn.textContent = isTwoStage ? '+ Add Group' : '+ Add Time Slot';
+
+    // Auto-set label prefix for auto-generate panel
+    var prefixSelect = document.getElementById('gen_label_prefix');
+    if (prefixSelect) {
+        if (type === 'league') prefixSelect.value = 'week';
+        else if (type === 'round_robin') prefixSelect.value = 'round';
+        else if (type === 'two_stage') prefixSelect.value = 'group';
+    }
+    // Update auto-generate button text
+    var autoBtn = document.getElementById('toggle-auto-generate');
+    if (autoBtn) autoBtn.textContent = isTwoStage ? '\u2699 Auto-Generate Groups' : '\u2699 Auto-Generate Slots';
 });
 
 function addTimeSlot() {
@@ -363,6 +570,160 @@ function addTimeSlot() {
         </div>
     `;
     container.appendChild(row);
+}
+
+// ============================================================
+// AUTO-GENERATE TIME SLOTS
+// Quick-create multiple time slots based on start date + frequency.
+// Generated rows use the same form fields as manual rows (including
+// empty slot_ids[] for new slots), so the PHP update handler works unchanged.
+// ============================================================
+
+/** Toggle auto-generate panel; pre-fills start date and label prefix. */
+function toggleAutoGenerate() {
+    var fields = document.getElementById('auto-generate-fields');
+    var isHidden = fields.classList.contains('hidden');
+    fields.classList.toggle('hidden');
+
+    if (isHidden) {
+        var startDate = document.getElementById('start_date');
+        var genStartDate = document.getElementById('gen_start_date');
+        if (startDate && startDate.value && !genStartDate.value) {
+            genStartDate.value = startDate.value;
+        }
+
+        var tournamentType = document.getElementById('tournament_type').value;
+        var prefixSelect = document.getElementById('gen_label_prefix');
+        if (tournamentType === 'league') prefixSelect.value = 'week';
+        else if (tournamentType === 'round_robin') prefixSelect.value = 'round';
+        else if (tournamentType === 'two_stage') prefixSelect.value = 'group';
+    }
+}
+
+/** Validate inputs; warn about existing DB-backed slots before replacing. */
+function generateTimeSlots() {
+    var startDate = document.getElementById('gen_start_date').value;
+    var time = document.getElementById('gen_time').value;
+    var frequency = parseInt(document.getElementById('gen_frequency').value, 10);
+    var count = parseInt(document.getElementById('gen_count').value, 10);
+    var maxTeams = parseInt(document.getElementById('gen_max_teams').value, 10);
+    var labelPrefix = document.getElementById('gen_label_prefix').value;
+
+    if (!startDate) {
+        alert('Please select a start date.');
+        document.getElementById('gen_start_date').focus();
+        return;
+    }
+    if (!time) {
+        alert('Please select a time.');
+        document.getElementById('gen_time').focus();
+        return;
+    }
+    if (count < 1 || count > 52) {
+        alert('Number of slots must be between 1 and 52.');
+        return;
+    }
+
+    var container = document.getElementById('time-slots-container');
+    var existingRows = container.querySelectorAll('.slot-row');
+
+    if (existingRows.length > 0) {
+        // Check how many are saved in DB (have a slot_id value)
+        var dbCount = 0;
+        existingRows.forEach(function(row) {
+            var idInput = row.querySelector('input[name="slot_ids[]"]');
+            if (idInput && idInput.value) dbCount++;
+        });
+        var warning = dbCount > 0
+            ? '<br><strong style="color: var(--color-danger);">Note:</strong> ' + dbCount + ' slot(s) exist in the database and may have teams assigned.'
+            : '';
+
+        showConfirmModal(
+            'Replace Existing Slots?',
+            'There are ' + existingRows.length + ' existing time slot(s). Do you want to replace them with the generated slots?' + warning,
+            function() {
+                existingRows.forEach(function(row) { row.remove(); });
+                doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix);
+            }
+        );
+    } else {
+        doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix);
+    }
+}
+
+/** Create slot rows with calculated dates. Includes empty slot_ids[] for new-slot detection. */
+function doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix) {
+    var currentDate = new Date(startDate + 'T00:00:00');
+    var container = document.getElementById('time-slots-container');
+    var isEditPage = window.location.href.indexOf('tournament-edit') !== -1;
+
+    for (var i = 0; i < count; i++) {
+        var year = currentDate.getFullYear();
+        var month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        var day = String(currentDate.getDate()).padStart(2, '0');
+        var dateStr = year + '-' + month + '-' + day;
+
+        var label = '';
+        if (labelPrefix === 'week') label = 'Week ' + (i + 1);
+        else if (labelPrefix === 'round') label = 'Round ' + (i + 1);
+        else if (labelPrefix === 'session') label = 'Session ' + (i + 1);
+        else if (labelPrefix === 'group') label = 'Group ' + numberToLetters(i);
+        else if (labelPrefix === 'date') {
+            label = currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+
+        var row = document.createElement('div');
+        row.className = 'slot-row';
+        var hiddenIdHtml = isEditPage ? '<input type="hidden" name="slot_ids[]" value="">' : '';
+        row.innerHTML = hiddenIdHtml +
+            '<div class="form-group">' +
+                '<label>Date</label>' +
+                '<input type="date" name="slot_dates[]" class="form-control" value="' + dateStr + '" required>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>Time</label>' +
+                '<input type="time" name="slot_times[]" class="form-control" value="' + time + '" required>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>Label</label>' +
+                '<input type="text" name="slot_labels[]" class="form-control" value="' + label + '">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>Max Teams</label>' +
+                '<input type="number" name="slot_max_teams[]" class="form-control" value="' + maxTeams + '" min="1" max="50">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>&nbsp;</label>' +
+                '<button type="button" class="btn btn-danger btn-small" onclick="this.closest(\'.slot-row\').remove()">Remove</button>' +
+            '</div>';
+
+        container.appendChild(row);
+        currentDate.setDate(currentDate.getDate() + frequency);
+    }
+
+    document.getElementById('auto-generate-fields').classList.add('hidden');
+
+    var endDateField = document.getElementById('end_date');
+    if (endDateField && !endDateField.value) {
+        var lastDate = new Date(currentDate);
+        lastDate.setDate(lastDate.getDate() - frequency);
+        var ey = lastDate.getFullYear();
+        var em = String(lastDate.getMonth() + 1).padStart(2, '0');
+        var ed = String(lastDate.getDate()).padStart(2, '0');
+        endDateField.value = ey + '-' + em + '-' + ed;
+    }
+}
+
+/** Convert 0-based index to letters: 0=A, 1=B, ..., 25=Z, 26=AA. */
+function numberToLetters(n) {
+    var result = '';
+    n = n + 1;
+    while (n > 0) {
+        n--;
+        result = String.fromCharCode(65 + (n % 26)) + result;
+        n = Math.floor(n / 26);
+    }
+    return result;
 }
 </script>
 

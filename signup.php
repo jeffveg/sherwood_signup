@@ -4,6 +4,7 @@
  * Sherwood Adventure Tournament System
  *
  * Supports both simple form and account-based signup modes.
+ * Account-based: shows login/register tabs, then team form after auth.
  * For Round Robin and Two-Stage tournaments, includes time slot selection.
  */
 require_once __DIR__ . '/includes/auth.php';
@@ -46,7 +47,7 @@ if ($tournament['registration_deadline'] && strtotime($tournament['registration_
     exit;
 }
 
-$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage']);
+$hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $timeSlots = [];
 if ($hasTimeSlots) {
     $slotStmt = $db->prepare("
@@ -58,23 +59,134 @@ if ($hasTimeSlots) {
     $timeSlots = $slotStmt->fetchAll();
 }
 
+$isAccountBased = ($tournament['signup_mode'] === 'account_based');
 $errors = [];
+$authErrors = [];
 $success = false;
 $regCode = '';
+$activeAuthTab = 'login'; // default tab for account-based
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Stale session guard: verify the session's team_account_id still exists in the DB.
+// This prevents bypassing the auth gate with a leftover session cookie from testing,
+// a deleted account, or if the team_accounts table hasn't been created yet.
+if (isTeamLoggedIn()) {
+    try {
+        $acctCheck = $db->prepare("SELECT id FROM team_accounts WHERE id = ?");
+        $acctCheck->execute([$_SESSION['team_account_id']]);
+        if (!$acctCheck->fetch()) {
+            logoutTeamAccount(); // Account no longer exists
+        }
+    } catch (PDOException $e) {
+        logoutTeamAccount(); // team_accounts table doesn't exist (migration not applied)
+    }
+}
+
+// ============================================================
+// Handle account-based actions (login / register)
+// ============================================================
+if ($isAccountBased && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+
+    // Captain Login
+    if ($action === 'captain_login') {
+        $loginEmail = trim($_POST['login_email'] ?? '');
+        $loginPassword = $_POST['login_password'] ?? '';
+
+        if (empty($loginEmail) || empty($loginPassword)) {
+            $authErrors[] = 'Email and password are required.';
+        } else {
+            try {
+                if (!loginTeamAccount($loginEmail, $loginPassword)) {
+                    $authErrors[] = 'Invalid email or password.';
+                }
+            } catch (PDOException $e) {
+                $authErrors[] = 'Account system not available. Please run the database migration (Features 7-8 in migration-features.sql).';
+            }
+        }
+        // On success, loginTeamAccount sets session — page will reload showing team form
+        if (empty($authErrors) && isTeamLoggedIn()) {
+            header("Location: /signup.php?tournament_id={$tournamentId}");
+            exit;
+        }
+        $activeAuthTab = 'login';
+    }
+
+    // Captain Register
+    if ($action === 'captain_register') {
+        $regName = trim($_POST['reg_name'] ?? '');
+        $regEmail = trim($_POST['reg_email'] ?? '');
+        $regPhone = trim($_POST['reg_phone'] ?? '');
+        $regPassword = $_POST['reg_password'] ?? '';
+        $regConfirm = $_POST['reg_confirm'] ?? '';
+
+        if (empty($regName)) $authErrors[] = 'Captain name is required.';
+        if (empty($regEmail)) $authErrors[] = 'Email is required.';
+        if (!empty($regEmail) && !filter_var($regEmail, FILTER_VALIDATE_EMAIL)) {
+            $authErrors[] = 'Please enter a valid email address.';
+        }
+        if (empty($regPassword)) $authErrors[] = 'Password is required.';
+        if (strlen($regPassword) < 6) $authErrors[] = 'Password must be at least 6 characters.';
+        if ($regPassword !== $regConfirm) $authErrors[] = 'Passwords do not match.';
+
+        if (empty($authErrors)) {
+            try {
+                $result = registerTeamAccount($regEmail, $regPassword, $regName, $regPhone);
+                if ($result === true) {
+                    header("Location: /signup.php?tournament_id={$tournamentId}");
+                    exit;
+                } else {
+                    $authErrors[] = $result;
+                }
+            } catch (PDOException $e) {
+                $authErrors[] = 'Account system not available. Please run the database migration (Features 7-8 in migration-features.sql).';
+            }
+        }
+        $activeAuthTab = 'register';
+    }
+}
+
+// ============================================================
+// Handle team registration (both simple + account-based)
+// ============================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register_team') {
+    // Block unauthenticated submissions for account-based tournaments
+    if ($isAccountBased && !isTeamLoggedIn()) {
+        $errors[] = 'You must sign in or create an account before registering a team.';
+    }
+
     $team_name = trim($_POST['team_name'] ?? '');
-    $captain_name = trim($_POST['captain_name'] ?? '');
-    $captain_email = trim($_POST['captain_email'] ?? '');
-    $captain_phone = trim($_POST['captain_phone'] ?? '');
     $time_slot_id = intval($_POST['time_slot_id'] ?? 0) ?: null;
+
+    // For account-based tournaments, captain info comes from the team_accounts table
+    // (pre-populated during account registration). For simple form, it comes from POST.
+    if ($isAccountBased && isTeamLoggedIn()) {
+        $acctStmt = $db->prepare("SELECT captain_name, email, phone FROM team_accounts WHERE id = ?");
+        $acctStmt->execute([$_SESSION['team_account_id']]);
+        $acctData = $acctStmt->fetch();
+        if (!$acctData) {
+            // Account was deleted after login — force re-authentication
+            logoutTeamAccount();
+            $errors[] = 'Your account could not be found. Please sign in again.';
+        }
+        $captain_name = $acctData['captain_name'] ?? '';
+        $captain_email = $acctData['email'] ?? '';
+        $captain_phone = $acctData['phone'] ?? '';
+        $team_account_id = $_SESSION['team_account_id'];
+    } else {
+        $captain_name = trim($_POST['captain_name'] ?? '');
+        $captain_email = trim($_POST['captain_email'] ?? '');
+        $captain_phone = trim($_POST['captain_phone'] ?? '');
+        $team_account_id = null;
+    }
 
     // Validation
     if (empty($team_name)) $errors[] = 'Team name is required.';
-    if (empty($captain_name)) $errors[] = 'Captain name is required.';
-    if (empty($captain_email)) $errors[] = 'Email address is required.';
-    if (!empty($captain_email) && !filter_var($captain_email, FILTER_VALIDATE_EMAIL)) {
-        $errors[] = 'Please enter a valid email address.';
+    if (!$isAccountBased || !isTeamLoggedIn()) {
+        if (empty($captain_name)) $errors[] = 'Captain name is required.';
+        if (empty($captain_email)) $errors[] = 'Email address is required.';
+        if (!empty($captain_email) && !filter_var($captain_email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Please enter a valid email address.';
+        }
     }
 
     // Check duplicate team name
@@ -114,15 +226,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         $regCode = generateRegistrationCode();
 
-        $stmt = $db->prepare("
-            INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'registered')
-        ");
-        $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode]);
+        // Migration safety: check if team_account_id column exists in teams table.
+        // Added by Feature 8 in migration-features.sql. If not applied, fall back
+        // to INSERT without it (account link won't be saved, but team still registers).
+        $hasAccountCol = false;
+        try {
+            $db->query("SELECT team_account_id FROM teams LIMIT 0");
+            $hasAccountCol = true;
+        } catch (PDOException $e) { /* Feature 8 migration not yet applied */ }
+
+        if ($hasAccountCol) {
+            $stmt = $db->prepare("
+                INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, team_account_id, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registered')
+            ");
+            $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode, $team_account_id]);
+        } else {
+            $stmt = $db->prepare("
+                INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'registered')
+            ");
+            $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode]);
+        }
+
+        $teamId = $db->lastInsertId();
+
+        // Handle logo upload
+        if (function_exists('handleLogoUpload')) {
+            $logoFilename = handleLogoUpload($teamId);
+            if ($logoFilename) {
+                $db->prepare("UPDATE teams SET logo_path = ? WHERE id = ?")->execute([$logoFilename, $teamId]);
+            }
+        }
 
         $success = true;
     }
 }
+
+// Re-count teams for display (in case we just registered)
+$teamCount->execute([$tournamentId]);
+$currentTeams = $teamCount->fetchColumn();
 
 $pageTitle = 'Sign Up - ' . $tournament['name'];
 include __DIR__ . '/includes/header.php';
@@ -156,11 +299,110 @@ include __DIR__ . '/includes/header.php';
 
             <div class="mt-3">
                 <a href="/tournament.php?id=<?php echo $tournamentId; ?>" class="btn btn-primary">View Tournament</a>
-                <a href="/" class="btn btn-secondary" style="margin-left: 10px;">All Tournaments</a>
+                <?php if ($isAccountBased && isTeamLoggedIn()): ?>
+                    <a href="/captain/" class="btn btn-secondary" style="margin-left: 10px;">My Teams</a>
+                <?php else: ?>
+                    <a href="/" class="btn btn-secondary" style="margin-left: 10px;">All Tournaments</a>
+                <?php endif; ?>
             </div>
         </div>
+
+    <?php elseif ($isAccountBased && !isTeamLoggedIn()): ?>
+        <!-- Account-Based: Login / Register Tabs -->
+        <div class="signup-card fade-in">
+            <?php if (!empty($authErrors)): ?>
+                <div class="flash-message flash-error" style="border-radius: var(--border-radius); padding: 14px; margin-bottom: 20px;">
+                    <ul style="list-style: none;">
+                        <?php foreach ($authErrors as $err): ?>
+                            <li>&#9888; <?php echo h($err); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <div style="margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid var(--color-brown-border);">
+                <h2 style="margin-bottom: 8px;">Captain Account Required</h2>
+                <p style="font-size: 14px; opacity: 0.7; margin-bottom: 0;">
+                    <?php echo h($tournament['name']); ?>
+                    <span class="badge badge-type" style="margin-left: 6px;">
+                        <?php echo ucwords(str_replace('_', ' ', $tournament['tournament_type'])); ?>
+                    </span>
+                </p>
+                <p style="font-size: 13px; opacity: 0.5; margin-bottom: 0;">
+                    Sign in or create an account to register your team.
+                </p>
+            </div>
+
+            <!-- Auth Tabs -->
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab <?php echo $activeAuthTab === 'login' ? 'active' : ''; ?>" onclick="switchAuthTab('login')">Sign In</button>
+                <button type="button" class="auth-tab <?php echo $activeAuthTab === 'register' ? 'active' : ''; ?>" onclick="switchAuthTab('register')">Create Account</button>
+            </div>
+
+            <!-- Login Panel -->
+            <div class="auth-panel <?php echo $activeAuthTab === 'login' ? 'active' : ''; ?>" id="auth-login"
+                 style="<?php echo $activeAuthTab !== 'login' ? 'display:none;' : ''; ?>">
+                <form method="POST" action="">
+                    <input type="hidden" name="action" value="captain_login">
+                    <div class="form-group">
+                        <label for="login_email">Email Address</label>
+                        <input type="email" id="login_email" name="login_email" class="form-control"
+                               value="<?php echo h($_POST['login_email'] ?? ''); ?>" required
+                               placeholder="captain@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="login_password">Password</label>
+                        <input type="password" id="login_password" name="login_password" class="form-control"
+                               required placeholder="Your password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-large" style="width: 100%;">Sign In</button>
+                </form>
+            </div>
+
+            <!-- Register Panel -->
+            <div class="auth-panel <?php echo $activeAuthTab === 'register' ? 'active' : ''; ?>" id="auth-register"
+                 style="<?php echo $activeAuthTab !== 'register' ? 'display:none;' : ''; ?>">
+                <form method="POST" action="">
+                    <input type="hidden" name="action" value="captain_register">
+                    <div class="form-group">
+                        <label for="reg_name">Captain Name *</label>
+                        <input type="text" id="reg_name" name="reg_name" class="form-control"
+                               value="<?php echo h($_POST['reg_name'] ?? ''); ?>" required
+                               placeholder="Your full name" maxlength="255">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="reg_email">Email *</label>
+                            <input type="email" id="reg_email" name="reg_email" class="form-control"
+                                   value="<?php echo h($_POST['reg_email'] ?? ''); ?>" required
+                                   placeholder="captain@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg_phone">Phone</label>
+                            <input type="tel" id="reg_phone" name="reg_phone" class="form-control"
+                                   value="<?php echo h($_POST['reg_phone'] ?? ''); ?>"
+                                   placeholder="(555) 123-4567">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="reg_password">Password *</label>
+                            <input type="password" id="reg_password" name="reg_password" class="form-control"
+                                   required placeholder="Min 6 characters" minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label for="reg_confirm">Confirm Password *</label>
+                            <input type="password" id="reg_confirm" name="reg_confirm" class="form-control"
+                                   required placeholder="Repeat password">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-large" style="width: 100%;">Create Account &amp; Continue</button>
+                </form>
+            </div>
+        </div>
+
     <?php else: ?>
-        <!-- Signup Form -->
+        <!-- Team Registration Form (simple form mode OR logged-in account mode) -->
         <div class="signup-card fade-in">
             <?php if (!empty($errors)): ?>
                 <div class="flash-message flash-error" style="border-radius: var(--border-radius); padding: 14px; margin-bottom: 20px;">
@@ -188,7 +430,20 @@ include __DIR__ . '/includes/header.php';
                 </p>
             </div>
 
-            <form method="POST" action="" id="signup-form">
+            <?php if ($isAccountBased && isTeamLoggedIn()): ?>
+                <!-- Logged-in captain banner -->
+                <div class="captain-banner">
+                    <div>
+                        <strong>Signed in as:</strong> <?php echo h($_SESSION['team_account_name']); ?>
+                        <span style="opacity: 0.6; margin-left: 8px;">(<?php echo h($_SESSION['team_account_email']); ?>)</span>
+                    </div>
+                    <a href="/captain/logout.php?return=<?php echo urlencode("/signup.php?tournament_id={$tournamentId}"); ?>" style="font-size: 13px;">Sign out</a>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" action="" id="signup-form" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="register_team">
+
                 <div class="form-group">
                     <label for="team_name">Team Name *</label>
                     <input type="text" id="team_name" name="team_name" class="form-control"
@@ -196,6 +451,8 @@ include __DIR__ . '/includes/header.php';
                            placeholder="Enter your team name" maxlength="255">
                 </div>
 
+                <?php if (!$isAccountBased || !isTeamLoggedIn()): ?>
+                <!-- Captain info fields (simple form mode) -->
                 <div class="form-group">
                     <label for="captain_name">Captain Name *</label>
                     <input type="text" id="captain_name" name="captain_name" class="form-control"
@@ -216,6 +473,13 @@ include __DIR__ . '/includes/header.php';
                                value="<?php echo h($_POST['captain_phone'] ?? ''); ?>"
                                placeholder="(555) 123-4567">
                     </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="form-group">
+                    <label for="team_logo">Team Logo <small style="opacity: 0.6;">(optional, max 2MB)</small></label>
+                    <input type="file" id="team_logo" name="team_logo" class="form-control"
+                           accept="image/jpeg,image/png,image/gif,image/webp">
                 </div>
 
                 <!-- Time Slot / Group Selection -->
@@ -277,13 +541,23 @@ include __DIR__ . '/includes/header.php';
 
 <script>
 function selectTimeSlot(el, slotId) {
-    // Remove selection from all
     document.querySelectorAll('.time-slot-card').forEach(function(card) {
         card.classList.remove('slot-selected');
     });
-    // Select this one
     el.classList.add('slot-selected');
     document.getElementById('time_slot_id').value = slotId;
+}
+
+function switchAuthTab(tab) {
+    document.querySelectorAll('.auth-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.auth-panel').forEach(function(p) {
+        p.classList.remove('active');
+        p.style.display = 'none';
+    });
+    document.querySelector('.auth-tab:nth-child(' + (tab === 'login' ? '1' : '2') + ')').classList.add('active');
+    var activePanel = document.getElementById('auth-' + tab);
+    activePanel.classList.add('active');
+    activePanel.style.display = 'block';
 }
 
 // Form validation

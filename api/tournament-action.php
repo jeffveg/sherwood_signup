@@ -6,6 +6,7 @@
  * Handles: open_registration, close_registration, generate_bracket, complete, recalculate_standings
  */
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/bracket-functions.php';
 requireAdmin();
 
 $db = getDB();
@@ -49,6 +50,24 @@ switch ($action) {
         setFlash('success', 'Standings recalculated.');
         break;
 
+    case 'delete':
+        // Delete team logo files before cascade removes the records
+        $logos = $db->prepare("SELECT logo_path FROM teams WHERE tournament_id = ? AND logo_path IS NOT NULL");
+        $logos->execute([$tournamentId]);
+        foreach ($logos->fetchAll() as $logo) {
+            $filePath = __DIR__ . '/../uploads/logos/' . $logo['logo_path'];
+            if (file_exists($filePath)) {
+                unlink($filePath);
+            }
+        }
+
+        // Delete tournament — CASCADE handles matches, teams, standings, time_slots
+        $db->prepare("DELETE FROM tournaments WHERE id = ?")->execute([$tournamentId]);
+
+        setFlash('success', "Tournament \"{$tournament['name']}\" and all related data have been permanently deleted.");
+        $redirect = '/admin/dashboard.php';
+        break;
+
     default:
         setFlash('error', 'Invalid action.');
 }
@@ -81,6 +100,11 @@ function generateBracket($db, $tournament) {
     // Set status to in_progress
     $db->prepare("UPDATE tournaments SET status = 'in_progress' WHERE id = ?")->execute([$tournamentId]);
 
+    // Also clear round labels (if table exists)
+    try {
+        $db->prepare("DELETE FROM round_labels WHERE tournament_id = ?")->execute([$tournamentId]);
+    } catch (PDOException $e) { /* table not yet created */ }
+
     switch ($type) {
         case 'single_elimination':
             generateSingleElimination($db, $tournamentId, $teams);
@@ -89,10 +113,25 @@ function generateBracket($db, $tournament) {
             generateDoubleElimination($db, $tournamentId, $teams);
             break;
         case 'round_robin':
-            generateRoundRobin($db, $tournamentId, $teams);
+            $encounters = $tournament['league_encounters'] ?? 1;
+            generateRoundRobin($db, $tournamentId, $teams, $encounters);
             break;
         case 'two_stage':
-            generateGroupStage($db, $tournamentId, $teams);
+            generateGroupStage($db, $tournament, $teams);
+            break;
+        case 'league':
+            $encounters = $tournament['league_encounters'] ?? 1;
+            // League can run as single pool (no groups) or grouped (teams assigned to time slots).
+            // Detect by checking if any team has a time_slot_id assigned.
+            $hasGroups = false;
+            foreach ($teams as $t) {
+                if (!empty($t['time_slot_id'])) { $hasGroups = true; break; }
+            }
+            if ($hasGroups) {
+                generateLeagueWithGroups($db, $tournament, $teams, $encounters);
+            } else {
+                generateRoundRobin($db, $tournamentId, $teams, $encounters);
+            }
             break;
     }
 
@@ -117,10 +156,34 @@ function generateSingleElimination($db, $tournamentId, $teams, $bracketType = 'w
     $matchNumber = 0;
     $firstRoundMatches = $bracketSize / 2;
 
-    // Create seeded positions
-    $positions = [];
-    for ($i = 0; $i < $bracketSize; $i++) {
-        $positions[] = $i < $teamCount ? $teams[$i]['id'] : null;
+    // Create seeded positions with byes distributed evenly
+    // Top seeds get byes; byes are placed in the second slot of the top match positions
+    $positions = array_fill(0, $bracketSize, null);
+    $byes = $bracketSize - $teamCount;
+
+    if ($byes === 0) {
+        // No byes — simple sequential placement
+        for ($i = 0; $i < $teamCount; $i++) {
+            $positions[$i] = $teams[$i]['id'];
+        }
+    } else {
+        // Place top seeds with byes first (seed 1 gets bye, seed 2 gets bye, etc.)
+        // Byes go into the opponent slot of the top-seeded positions
+        // Match 1 = positions 0,1; Match 2 = positions 2,3; etc.
+        // Seed 1 → position 0 (Match 1, slot 1) with bye at position 1
+        // Seed 2 → position (bracketSize-2) (last match, slot 1) with bye at position (bracketSize-1)
+        // This spreads byes across the bracket using standard tournament seeding
+
+        // Standard bracket seeding order for positions
+        // Build proper seeded bracket positions
+        $seedOrder = bracketSeedOrder($bracketSize);
+        for ($i = 0; $i < $bracketSize; $i++) {
+            $seedIndex = $seedOrder[$i]; // which seed goes in this position
+            if ($seedIndex < $teamCount) {
+                $positions[$i] = $teams[$seedIndex]['id'];
+            }
+            // else stays null (bye)
+        }
     }
 
     // Round 1
@@ -198,51 +261,83 @@ function generateDoubleElimination($db, $tournamentId, $teams) {
     ")->execute([$tournamentId]);
 }
 
-function generateRoundRobin($db, $tournamentId, $teams) {
+/**
+ * Generate a round-robin schedule for all teams in a single pool.
+ *
+ * Uses the "circle method" (polygon scheduling algorithm):
+ * - Team at index 0 is fixed; all others rotate clockwise each round.
+ * - For N teams: N-1 rounds, each with N/2 matches. If odd, a bye (null) is added.
+ * - Encounters > 1 repeats the full cycle (e.g., 2 = home & away).
+ *   On even encounters, home/away is swapped for fairness.
+ *
+ * @param PDO   $db           Database connection
+ * @param int   $tournamentId Tournament ID
+ * @param array $teams        Active team rows from DB
+ * @param int   $encounters   Number of times each pair plays (default 1)
+ */
+function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
     $teamCount = count($teams);
     $stmt = $db->prepare("
         INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, status)
         VALUES (?, ?, ?, 'round_robin', ?, ?, 'pending')
     ");
 
-    // Standard round-robin scheduling
     $teamIds = array_column($teams, 'id');
 
-    // If odd number of teams, add a "bye" placeholder
+    // Odd team count: add null placeholder so every round has equal pairs.
+    // Teams matched against null get a bye (skipped below).
     if ($teamCount % 2 !== 0) {
-        $teamIds[] = null; // bye
+        $teamIds[] = null;
         $teamCount++;
     }
 
-    $rounds = $teamCount - 1;
-    $matchesPerRound = $teamCount / 2;
+    $baseRounds = $teamCount - 1;       // Rounds needed for one full cycle
+    $matchesPerRound = $teamCount / 2;   // Matches per round
+    $globalMatchNum = 0;
 
-    for ($round = 0; $round < $rounds; $round++) {
-        $matchNum = 0;
-        for ($match = 0; $match < $matchesPerRound; $match++) {
-            $home = ($match === 0) ? 0 : (($teamCount - 1 - $match + $round) % ($teamCount - 1) + 1);
-            $away = ($teamCount - 1 - $match + $round) % ($teamCount - 1) + 1;
+    // Outer loop: repeat full schedule for each encounter
+    for ($enc = 0; $enc < $encounters; $enc++) {
+        for ($round = 0; $round < $baseRounds; $round++) {
+            $actualRound = ($enc * $baseRounds) + $round + 1;
 
-            if ($match === 0) {
-                $home = 0;
-                $away = ($round % ($teamCount - 1)) + 1;
-            } else {
-                $home = (($round + $match) % ($teamCount - 1)) + 1;
-                $away = (($round + $teamCount - 1 - $match) % ($teamCount - 1)) + 1;
+            for ($match = 0; $match < $matchesPerRound; $match++) {
+                // Circle method: index 0 is fixed, others rotate
+                if ($match === 0) {
+                    $home = 0;
+                    $away = ($round % ($teamCount - 1)) + 1;
+                } else {
+                    $home = (($round + $match) % ($teamCount - 1)) + 1;
+                    $away = (($round + $teamCount - 1 - $match) % ($teamCount - 1)) + 1;
+                }
+
+                $team1 = $teamIds[$home] ?? null;
+                $team2 = $teamIds[$away] ?? null;
+
+                if ($team1 === null || $team2 === null) continue; // Skip byes
+
+                $globalMatchNum++;
+
+                // Swap home/away on odd encounters (2nd, 4th, etc.) for fairness
+                if ($enc % 2 === 1) {
+                    $stmt->execute([$tournamentId, $actualRound, $globalMatchNum, $team2, $team1]);
+                } else {
+                    $stmt->execute([$tournamentId, $actualRound, $globalMatchNum, $team1, $team2]);
+                }
             }
-
-            $team1 = $teamIds[$home] ?? null;
-            $team2 = $teamIds[$away] ?? null;
-
-            // Skip byes
-            if ($team1 === null || $team2 === null) continue;
-
-            $matchNum++;
-            $stmt->execute([$tournamentId, $round + 1, $matchNum, $team1, $team2]);
         }
     }
 
-    // Initialize standings
+    // Create round label placeholders for custom labels/dates (migration Feature 6).
+    // Silently skip if round_labels table doesn't exist yet.
+    try {
+        $totalRounds = $baseRounds * $encounters;
+        $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
+        for ($r = 1; $r <= $totalRounds; $r++) {
+            $labelStmt->execute([$tournamentId, $r]);
+        }
+    } catch (PDOException $e) { /* round_labels table not yet created — Feature 6 migration needed */ }
+
+    // Initialize standings row for each team (all zeros)
     $standingsStmt = $db->prepare("
         INSERT INTO round_robin_standings (tournament_id, team_id, wins, losses, draws, points_for, points_against, point_differential, ranking)
         VALUES (?, ?, 0, 0, 0, 0, 0, 0, NULL)
@@ -252,7 +347,143 @@ function generateRoundRobin($db, $tournamentId, $teams) {
     }
 }
 
-function generateGroupStage($db, $tournamentId, $teams) {
+/**
+ * Generate a league schedule with per-group round-robins.
+ *
+ * Unlike generateRoundRobin() (single pool), this creates separate mini
+ * round-robins within each group (time slot). Teams only play others in
+ * their group. Matches and standings include time_slot_id for group filtering.
+ *
+ * Validation:
+ * - All teams must be assigned to a group (time_slot_id). Ungrouped teams cause an error.
+ * - Each group needs at least 2 teams.
+ * On validation failure, tournament status reverts to 'registration_closed'.
+ *
+ * @param PDO   $db           Database connection
+ * @param array $tournament   Full tournament row
+ * @param array $teams        Active team rows from DB
+ * @param int   $encounters   Number of times each pair plays within their group
+ */
+function generateLeagueWithGroups($db, $tournament, $teams, $encounters = 1) {
+    $tournamentId = $tournament['id'];
+
+    // Partition teams into groups by their time_slot_id
+    $groups = [];
+    $ungrouped = [];
+    foreach ($teams as $team) {
+        if ($team['time_slot_id']) {
+            $groups[$team['time_slot_id']][] = $team;
+        } else {
+            $ungrouped[] = $team;
+        }
+    }
+
+    // All teams must belong to a group for grouped league scheduling
+    if (!empty($ungrouped)) {
+        setFlash('error', 'All teams must be assigned to a group before generating the schedule. ' . count($ungrouped) . ' team(s) have no group assigned.');
+        $db->prepare("UPDATE tournaments SET status = 'registration_closed' WHERE id = ?")->execute([$tournamentId]);
+        return;
+    }
+
+    // Each group needs at least 2 teams to form matches
+    foreach ($groups as $slotId => $groupTeams) {
+        if (count($groupTeams) < 2) {
+            $slotStmt = $db->prepare("SELECT slot_label FROM time_slots WHERE id = ?");
+            $slotStmt->execute([$slotId]);
+            $slotLabel = $slotStmt->fetchColumn() ?: "Group $slotId";
+            setFlash('error', "Group \"{$slotLabel}\" needs at least 2 teams (currently has " . count($groupTeams) . ").");
+            $db->prepare("UPDATE tournaments SET status = 'registration_closed' WHERE id = ?")->execute([$tournamentId]);
+            return;
+        }
+    }
+
+    // Prepared statements for batch inserts (reused across all groups)
+    $matchStmt = $db->prepare("
+        INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, time_slot_id, status)
+        VALUES (?, ?, ?, 'round_robin', ?, ?, ?, 'pending')
+    ");
+    $standingsStmt = $db->prepare("
+        INSERT INTO round_robin_standings (tournament_id, team_id, time_slot_id, wins, losses, draws, points_for, points_against, point_differential, ranking)
+        VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, NULL)
+    ");
+
+    // Generate per-group round-robin schedules using circle method
+    // (same algorithm as generateRoundRobin but scoped to each group)
+    $globalMatchNumber = 0;  // Sequential across all groups for unique match IDs
+    $maxRounds = 0;          // Track highest round count (groups may differ in size)
+
+    foreach ($groups as $slotId => $groupTeams) {
+        $teamIds = array_column($groupTeams, 'id');
+        $teamCount = count($teamIds);
+
+        // Odd team count in this group: add bye placeholder
+        $working = $teamIds;
+        if ($teamCount % 2 !== 0) {
+            $working[] = null;
+            $teamCount++;
+        }
+
+        $baseRounds = $teamCount - 1;
+        $matchesPerRound = $teamCount / 2;
+        $totalGroupRounds = $baseRounds * $encounters;
+        if ($totalGroupRounds > $maxRounds) $maxRounds = $totalGroupRounds;
+
+        for ($enc = 0; $enc < $encounters; $enc++) {
+            for ($round = 0; $round < $baseRounds; $round++) {
+                $actualRound = ($enc * $baseRounds) + $round + 1;
+
+                for ($match = 0; $match < $matchesPerRound; $match++) {
+                    // Circle method: index 0 fixed, others rotate
+                    if ($match === 0) {
+                        $home = 0;
+                        $away = ($round % ($teamCount - 1)) + 1;
+                    } else {
+                        $home = (($round + $match) % ($teamCount - 1)) + 1;
+                        $away = (($round + $teamCount - 1 - $match) % ($teamCount - 1)) + 1;
+                    }
+
+                    $team1 = $working[$home] ?? null;
+                    $team2 = $working[$away] ?? null;
+
+                    if ($team1 === null || $team2 === null) continue; // Skip byes
+
+                    $globalMatchNumber++;
+
+                    // Swap home/away on odd encounters for fairness
+                    if ($enc % 2 === 1) {
+                        $matchStmt->execute([
+                            $tournamentId, $actualRound, $globalMatchNumber,
+                            $team2, $team1, $slotId
+                        ]);
+                    } else {
+                        $matchStmt->execute([
+                            $tournamentId, $actualRound, $globalMatchNumber,
+                            $team1, $team2, $slotId
+                        ]);
+                    }
+                }
+            }
+        }
+
+        // Initialize standings for each team in this group
+        foreach ($groupTeams as $team) {
+            $standingsStmt->execute([$tournamentId, $team['id'], $slotId]);
+        }
+    }
+
+    // Create round label placeholders (Feature 6 migration).
+    // Uses maxRounds across all groups so labels cover the largest group.
+    try {
+        $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
+        for ($r = 1; $r <= $maxRounds; $r++) {
+            $labelStmt->execute([$tournamentId, $r]);
+        }
+    } catch (PDOException $e) { /* round_labels table not yet created */ }
+}
+
+function generateGroupStage($db, $tournament, $teams) {
+    $tournamentId = $tournament['id'];
+
     // Group teams by their time_slot_id (group)
     $groups = [];
     $ungrouped = [];
@@ -339,6 +570,86 @@ function generateGroupStage($db, $tournamentId, $teams) {
             $standingsStmt->execute([$tournamentId, $team['id'], $slotId]);
         }
     }
+
+    // --- Create placeholder elimination bracket ---
+    $elimType = $tournament['two_stage_elimination_type'] ?? 'single_elimination';
+    $advancePerGroup = $tournament['two_stage_advance_count'] ?? 1;
+    $numGroups = count($groups);
+    $totalAdvancing = $numGroups * $advancePerGroup;
+
+    if ($totalAdvancing >= 2) {
+        $bracketSize = 1;
+        while ($bracketSize < $totalAdvancing) $bracketSize *= 2;
+        $totalRounds = intval(log($bracketSize, 2));
+
+        $elimStmt = $db->prepare("
+            INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, status)
+            VALUES (?, ?, ?, 'winners', NULL, NULL, 'pending')
+        ");
+
+        // Round 1
+        $firstRoundMatches = $bracketSize / 2;
+        for ($i = 1; $i <= $firstRoundMatches; $i++) {
+            $elimStmt->execute([$tournamentId, 1, $i]);
+        }
+
+        // Subsequent rounds
+        for ($round = 2; $round <= $totalRounds; $round++) {
+            $matchesInRound = $bracketSize / pow(2, $round);
+            for ($i = 1; $i <= $matchesInRound; $i++) {
+                $elimStmt->execute([$tournamentId, $round, $i]);
+            }
+        }
+
+        // If double elimination, also create losers bracket and grand final
+        if ($elimType === 'double_elimination') {
+            $losersRounds = ($totalRounds - 1) * 2;
+            $losersStmt = $db->prepare("
+                INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, status)
+                VALUES (?, ?, ?, 'losers', NULL, NULL, 'pending')
+            ");
+            $matchesInRound = $bracketSize / 4;
+            for ($round = 1; $round <= $losersRounds; $round++) {
+                $numMatches = max(1, intval($matchesInRound));
+                for ($i = 1; $i <= $numMatches; $i++) {
+                    $losersStmt->execute([$tournamentId, $round, $i]);
+                }
+                if ($round % 2 === 0) $matchesInRound /= 2;
+            }
+            $db->prepare("
+                INSERT INTO matches (tournament_id, round, match_number, bracket_type, status)
+                VALUES (?, 1, 1, 'grand_final', 'pending')
+            ")->execute([$tournamentId]);
+        }
+    }
+}
+
+/**
+ * Generate standard tournament seeding order for bracket positions.
+ * Returns an array where index = bracket position, value = seed number (0-indexed).
+ * This ensures seed 1 and seed 2 can only meet in the final,
+ * seeds 1-4 can only meet in semifinals, etc.
+ * Byes (null positions) naturally fall to the highest-seeded players.
+ */
+function bracketSeedOrder($bracketSize) {
+    // Start with [0, 1] for a 2-team bracket
+    $order = [0, 1];
+
+    // Iteratively build the bracket by doubling the size each time
+    while (count($order) < $bracketSize) {
+        $newOrder = [];
+        $currentSize = count($order);
+        $nextSize = $currentSize * 2;
+        // For each existing position, pair the seed with its mirror
+        // Seed N is paired with (nextSize - 1 - N)
+        foreach ($order as $seed) {
+            $newOrder[] = $seed;
+            $newOrder[] = $nextSize - 1 - $seed;
+        }
+        $order = $newOrder;
+    }
+
+    return $order;
 }
 
 function advanceByeWinners($db, $tournamentId, $bracketType) {
@@ -361,6 +672,28 @@ function advanceByeWinners($db, $tournamentId, $bracketType) {
             UPDATE matches SET {$slot} = ?
             WHERE tournament_id = ? AND round = 2 AND match_number = ? AND bracket_type = ?
         ")->execute([$bye['winner_id'], $tournamentId, $r2MatchNum, $bracketType]);
+    }
+
+    // After all bye winners are placed, check if any R2 matches have both slots
+    // filled (two bye winners). If so, auto-advance one as a bye (higher seed = team1 wins).
+    $r2Matches = $db->prepare("
+        SELECT * FROM matches
+        WHERE tournament_id = ? AND round = 2 AND bracket_type = ? AND status = 'pending'
+        AND team1_id IS NOT NULL AND team2_id IS NOT NULL
+    ");
+    $r2Matches->execute([$tournamentId, $bracketType]);
+    foreach ($r2Matches->fetchAll() as $r2) {
+        // Both slots filled from byes — auto-advance team1 (higher seed)
+        $db->prepare("UPDATE matches SET winner_id = ?, status = 'completed' WHERE id = ?")
+           ->execute([$r2['team1_id'], $r2['id']]);
+
+        // Fetch tournament for advanceTeamInBracket
+        $tournStmt = $db->prepare("SELECT * FROM tournaments WHERE id = ?");
+        $tournStmt->execute([$tournamentId]);
+        $tournament = $tournStmt->fetch();
+        if ($tournament) {
+            advanceTeamInBracket($db, $tournament, $r2, $r2['team1_id'], $r2['team2_id']);
+        }
     }
 }
 
@@ -410,8 +743,18 @@ function recalculateStandings($db, $tournamentId) {
     $tournStmt->execute([$tournamentId]);
     $tournType = $tournStmt->fetchColumn();
 
-    if ($tournType === 'two_stage') {
-        // Rank per group (per time_slot_id)
+    // Determine ranking strategy: per-group or tournament-wide.
+    // Two-stage and grouped leagues store time_slot_id in standings for per-group ranking.
+    // Non-grouped leagues and standalone round robins rank all teams together.
+    $hasGroupStandings = false;
+    if (in_array($tournType, ['two_stage', 'league'])) {
+        $groupCheck = $db->prepare("SELECT COUNT(DISTINCT time_slot_id) FROM round_robin_standings WHERE tournament_id = ? AND time_slot_id IS NOT NULL");
+        $groupCheck->execute([$tournamentId]);
+        $hasGroupStandings = ($groupCheck->fetchColumn() > 0);
+    }
+
+    if ($hasGroupStandings) {
+        // Rank teams within each group separately (by wins, then point differential, then points for)
         $groupsStmt = $db->prepare("SELECT DISTINCT time_slot_id FROM round_robin_standings WHERE tournament_id = ? AND time_slot_id IS NOT NULL");
         $groupsStmt->execute([$tournamentId]);
         foreach ($groupsStmt->fetchAll() as $group) {
