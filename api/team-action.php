@@ -4,6 +4,7 @@
  * Sherwood Adventure Tournament System
  */
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/bracket-functions.php';
 requireAdmin();
 
 $db = getDB();
@@ -46,6 +47,61 @@ switch ($action) {
             exit;
         }
         setFlash('success', 'Seed updated.');
+        break;
+
+    case 'forfeit':
+        $db->prepare("UPDATE teams SET is_forfeit = 1 WHERE id = ?")->execute([$teamId]);
+
+        // Get tournament info for bracket advancement
+        $tournStmt = $db->prepare("SELECT * FROM tournaments WHERE id = ?");
+        $tournStmt->execute([$team['tournament_id']]);
+        $tournament = $tournStmt->fetch();
+
+        // Auto-resolve all pending/in_progress matches involving this team
+        $pendingMatches = $db->prepare("
+            SELECT * FROM matches
+            WHERE tournament_id = ? AND (team1_id = ? OR team2_id = ?)
+            AND status IN ('pending', 'in_progress')
+            ORDER BY bracket_type, round, match_number
+        ");
+        $pendingMatches->execute([$team['tournament_id'], $teamId, $teamId]);
+
+        foreach ($pendingMatches->fetchAll() as $m) {
+            $opponentId = ($m['team1_id'] == $teamId) ? $m['team2_id'] : $m['team1_id'];
+            if ($opponentId) {
+                $winnerId = $opponentId;
+                $loserId = $teamId;
+
+                // Set forfeit score: winner gets 1, forfeiting team gets 0
+                $team1Score = ($m['team1_id'] == $teamId) ? 0 : 1;
+                $team2Score = ($m['team2_id'] == $teamId) ? 0 : 1;
+
+                $db->prepare("UPDATE matches SET winner_id = ?, loser_id = ?, team1_score = ?, team2_score = ?, status = 'completed' WHERE id = ?")
+                   ->execute([$winnerId, $loserId, $team1Score, $team2Score, $m['id']]);
+
+                // Advance the winner in the bracket (re-fetch match for updated data)
+                $updatedMatch = $db->prepare("SELECT * FROM matches WHERE id = ?");
+                $updatedMatch->execute([$m['id']]);
+                $matchData = $updatedMatch->fetch();
+                advanceTeamInBracket($db, $tournament, $matchData, $winnerId, $loserId);
+            }
+        }
+
+        // For round robin / league, recalculate standings
+        if (in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league'])) {
+            recalculateStandingsForTournament($db, $team['tournament_id']);
+
+            if ($tournament['tournament_type'] === 'two_stage') {
+                checkAndGenerateEliminationStage($db, $tournament);
+            }
+        }
+
+        setFlash('success', "Team \"{$team['team_name']}\" has been forfeited. Their pending matches have been resolved and brackets updated.");
+        break;
+
+    case 'unforfeit':
+        $db->prepare("UPDATE teams SET is_forfeit = 0 WHERE id = ?")->execute([$teamId]);
+        setFlash('success', "Forfeit removed for team \"{$team['team_name']}\". Note: match results were not reverted.");
         break;
 
     default:

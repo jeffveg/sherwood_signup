@@ -494,6 +494,27 @@ tbody tr:last-child td {
 .type-double-elim   { color: var(--color-gold); }
 .type-round-robin   { color: var(--color-teal); }
 .type-two-stage     { color: #a67cd9; }
+.type-league        { color: #e06c75; }
+
+/* Team Logo */
+.team-logo {
+    border-radius: 50%;
+    object-fit: cover;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+/* Forfeit styling */
+.team-forfeit {
+    opacity: 0.6;
+}
+.team-forfeit s {
+    text-decoration: line-through;
+}
+.team-forfeit small {
+    color: var(--color-warning);
+    font-style: italic;
+}
 
 /* ============================================================
    PAGE HERO BANNER
@@ -631,6 +652,10 @@ tbody tr:last-child td {
     min-width: 200px;
 }
 
+.bracket-match-bye {
+    opacity: 0.55;
+}
+
 .bracket-match-header {
     background: rgba(255, 161, 51, 0.1);
     padding: 4px 10px;
@@ -686,9 +711,77 @@ tbody tr:last-child td {
     font-style: italic;
 }
 
-/* Bracket connector lines */
-.bracket-round .bracket-match {
+/* ============================================================
+   BRACKET TREE LAYOUT (visual flow with connectors)
+   ============================================================ */
+.bracket-tree {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding: 20px 10px;
+    min-width: max-content;
+}
+
+.bracket-tree .bracket-round {
+    display: flex;
+    flex-direction: column;
+    min-width: 260px;
+    gap: 0;
+    flex: 1;
+}
+
+.bracket-tree .bracket-round-title {
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.bracket-tree .bracket-round-matches {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    justify-content: space-around;
+    min-height: 0;
+}
+
+.bracket-match-wrapper {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
     position: relative;
+    flex: 1;
+    justify-content: center;
+    flex-direction: row;
+}
+
+.bracket-match-wrapper .bracket-match {
+    flex-shrink: 0;
+    width: 200px;
+}
+
+/* Horizontal connector line from match to right */
+.bracket-connector-right {
+    width: 30px;
+    height: 2px;
+    background: var(--color-brown-border);
+    flex-shrink: 0;
+}
+
+/* Horizontal connector line from left into match */
+.bracket-connector-left {
+    width: 30px;
+    height: 2px;
+    background: var(--color-brown-border);
+    flex-shrink: 0;
+}
+
+/* Vertical merge line (drawn by JS) */
+.bracket-vline {
+    position: absolute;
+    width: 2px;
+    background: var(--color-brown-border);
+    pointer-events: none;
+    z-index: 1;
 }
 
 /* ============================================================

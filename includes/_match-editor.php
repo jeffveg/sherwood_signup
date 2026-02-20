@@ -9,13 +9,13 @@
         <input type="hidden" name="match_id" value="<?php echo $match['id']; ?>">
         <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
         <div class="match-editor-team">
-            <div class="team-name"><?php echo $match['team1_name'] ? h($match['team1_name']) : 'TBD'; ?></div>
+            <div class="team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></div>
             <input type="number" name="team1_score" class="form-control" style="width: 80px; margin: 0 auto;"
                    value="<?php echo $match['team1_score'] ?? ''; ?>" placeholder="Score">
         </div>
         <div class="match-editor-vs">vs</div>
         <div class="match-editor-team">
-            <div class="team-name"><?php echo $match['team2_name'] ? h($match['team2_name']) : 'TBD'; ?></div>
+            <div class="team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></div>
             <input type="number" name="team2_score" class="form-control" style="width: 80px; margin: 0 auto;"
                    value="<?php echo $match['team2_score'] ?? ''; ?>" placeholder="Score">
         </div>

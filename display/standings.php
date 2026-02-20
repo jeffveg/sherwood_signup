@@ -33,7 +33,7 @@ $timeSlots = $slotsStmt->fetchAll();
 
 // Get standings
 $standingsStmt = $db->prepare("
-    SELECT rrs.*, t.team_name
+    SELECT rrs.*, t.team_name, t.is_forfeit, t.logo_path
     FROM round_robin_standings rrs
     JOIN teams t ON rrs.team_id = t.id
     WHERE rrs.tournament_id = ?
@@ -113,7 +113,7 @@ foreach ($timeSlots as $slot) {
                             <?php foreach ($groupStandings as $s): ?>
                             <tr class="<?php echo ($s['ranking'] ?? 999) <= $advanceCount ? 'advancing' : ''; ?>">
                                 <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                                <td class="team-name"><?php echo htmlspecialchars($s['team_name']); ?></td>
+                                <td class="team-name"><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'sm'); ?></td>
                                 <td class="stat-col"><?php echo $s['wins']; ?></td>
                                 <td class="stat-col"><?php echo $s['losses']; ?></td>
                                 <td class="stat-col"><?php echo $s['draws']; ?></td>
@@ -154,7 +154,7 @@ foreach ($timeSlots as $slot) {
                         <?php foreach ($standings as $s): ?>
                         <tr class="<?php echo $isTwoStage && ($s['ranking'] ?? 999) <= $advanceCount ? 'advancing' : ''; ?>">
                             <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                            <td class="team-name"><?php echo htmlspecialchars($s['team_name']); ?></td>
+                            <td class="team-name"><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'sm'); ?></td>
                             <td class="stat-col"><?php echo $s['wins']; ?></td>
                             <td class="stat-col"><?php echo $s['losses']; ?></td>
                             <td class="stat-col"><?php echo $s['draws']; ?></td>

@@ -25,12 +25,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $location = trim($_POST['location'] ?? '');
     $rules = trim($_POST['rules'] ?? '');
     $signup_mode = $_POST['signup_mode'] ?? 'simple_form';
+    $bracket_display = $_POST['bracket_display'] ?? 'full';
     $status = $_POST['status'] ?? 'draft';
 
     // Validation
     if (empty($name)) $errors[] = 'Tournament name is required.';
     if (empty($tournament_number)) $errors[] = 'Tournament number is required.';
-    if (!in_array($tournament_type, ['single_elimination', 'double_elimination', 'round_robin', 'two_stage'])) {
+    if (!in_array($tournament_type, ['single_elimination', 'double_elimination', 'round_robin', 'two_stage', 'league'])) {
         $errors[] = 'Invalid tournament type.';
     }
     if ($tournament_type === 'two_stage' && !in_array($two_stage_elimination_type, ['single_elimination', 'double_elimination'])) {
@@ -51,15 +52,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("
             INSERT INTO tournaments
             (tournament_number, name, description, tournament_type, two_stage_elimination_type,
-             two_stage_advance_count, status, signup_mode, max_teams, min_teams,
+             two_stage_advance_count, status, signup_mode, bracket_display, max_teams, min_teams,
              start_date, end_date, registration_deadline, location, rules, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
             $tournament_number, $name, $description, $tournament_type,
             $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-            $two_stage_advance_count, $status, $signup_mode, $max_teams, $min_teams,
+            $two_stage_advance_count, $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
             $start_date ?: null, $end_date ?: null,
             $registration_deadline ? $registration_deadline . ':00' : null,
             $location, $rules, $_SESSION['admin_id']
@@ -176,6 +177,9 @@ include __DIR__ . '/../includes/header.php';
                     <option value="two_stage" <?php echo ($_POST['tournament_type'] ?? '') === 'two_stage' ? 'selected' : ''; ?>>
                         Two Stage (Round Robin + Elimination)
                     </option>
+                    <option value="league" <?php echo ($_POST['tournament_type'] ?? '') === 'league' ? 'selected' : ''; ?>>
+                        League (Multi-Day/Week)
+                    </option>
                 </select>
             </div>
 
@@ -281,6 +285,17 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <div id="bracket-display-option" class="form-row hidden">
+                <div class="form-group">
+                    <label for="bracket_display">Bracket Display</label>
+                    <select id="bracket_display" name="bracket_display" class="form-control">
+                        <option value="full" <?php echo ($_POST['bracket_display'] ?? 'full') === 'full' ? 'selected' : ''; ?>>Full (show all rounds including byes)</option>
+                        <option value="compact" <?php echo ($_POST['bracket_display'] ?? '') === 'compact' ? 'selected' : ''; ?>>Compact (hide bye rounds, fits on one page)</option>
+                    </select>
+                    <span class="form-hint">Compact hides first-round byes so seeded teams start in the next round</span>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label for="rules">Rules / Additional Info</label>
                 <textarea id="rules" name="rules" class="form-control"
@@ -305,8 +320,14 @@ document.getElementById('tournament_type').addEventListener('change', function()
 
     twoStageOpts.classList.toggle('hidden', type !== 'two_stage');
 
+    // Show bracket display option for elimination types
+    const bracketDisplayOpt = document.getElementById('bracket-display-option');
+    const hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
+    bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
+
     const needsSlots = (type === 'round_robin' || type === 'two_stage');
     timeSlotsSection.classList.toggle('hidden', !needsSlots);
+    // League doesn't use time slots or two-stage options
 
     // Update labels based on type (groups vs time slots)
     var isTwoStage = (type === 'two_stage');

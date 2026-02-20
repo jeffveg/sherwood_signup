@@ -31,13 +31,14 @@ CREATE TABLE IF NOT EXISTS tournaments (
     tournament_number VARCHAR(20) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    tournament_type ENUM('single_elimination', 'double_elimination', 'round_robin', 'two_stage') NOT NULL,
+    tournament_type ENUM('single_elimination', 'double_elimination', 'round_robin', 'two_stage', 'league') NOT NULL,
     -- For two_stage: which elimination type for stage 2
     two_stage_elimination_type ENUM('single_elimination', 'double_elimination') NULL,
     -- How many teams advance from round robin to elimination (for two_stage)
     two_stage_advance_count INT DEFAULT 4,
     status ENUM('draft', 'registration_open', 'registration_closed', 'in_progress', 'completed', 'cancelled') DEFAULT 'draft',
     signup_mode ENUM('simple_form', 'account_based') DEFAULT 'simple_form',
+    bracket_display ENUM('full', 'compact') DEFAULT 'full',
     max_teams INT DEFAULT 16,
     min_teams INT DEFAULT 2,
     start_date DATE NULL,
@@ -80,8 +81,10 @@ CREATE TABLE IF NOT EXISTS teams (
     time_slot_id INT NULL,
     seed INT NULL,
     status ENUM('registered', 'confirmed', 'checked_in', 'eliminated', 'withdrawn') DEFAULT 'registered',
+    is_forfeit TINYINT(1) DEFAULT 0,
     registration_code VARCHAR(20) NOT NULL,  -- For team to reference later
     notes TEXT,
+    logo_path VARCHAR(500) NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
     FOREIGN KEY (time_slot_id) REFERENCES time_slots(id) ON DELETE SET NULL,

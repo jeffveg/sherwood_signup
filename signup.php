@@ -120,6 +120,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ");
         $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode]);
 
+        $teamId = $db->lastInsertId();
+
+        // Handle logo upload
+        $logoFilename = handleLogoUpload($teamId);
+        if ($logoFilename) {
+            $db->prepare("UPDATE teams SET logo_path = ? WHERE id = ?")->execute([$logoFilename, $teamId]);
+        }
+
         $success = true;
     }
 }
@@ -188,7 +196,7 @@ include __DIR__ . '/includes/header.php';
                 </p>
             </div>
 
-            <form method="POST" action="" id="signup-form">
+            <form method="POST" action="" id="signup-form" enctype="multipart/form-data">
                 <div class="form-group">
                     <label for="team_name">Team Name *</label>
                     <input type="text" id="team_name" name="team_name" class="form-control"
@@ -216,6 +224,12 @@ include __DIR__ . '/includes/header.php';
                                value="<?php echo h($_POST['captain_phone'] ?? ''); ?>"
                                placeholder="(555) 123-4567">
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="team_logo">Team Logo <small style="opacity: 0.6;">(optional, max 2MB)</small></label>
+                    <input type="file" id="team_logo" name="team_logo" class="form-control"
+                           accept="image/jpeg,image/png,image/gif,image/webp">
                 </div>
 
                 <!-- Time Slot / Group Selection -->

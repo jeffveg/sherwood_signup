@@ -34,8 +34,8 @@ $timeSlots = $slotsStmt->fetchAll();
 // Get matches
 $matchesStmt = $db->prepare("
     SELECT m.*,
-           t1.team_name as team1_name,
-           t2.team_name as team2_name,
+           t1.team_name as team1_name, t1.is_forfeit as team1_forfeit, t1.logo_path as team1_logo,
+           t2.team_name as team2_name, t2.is_forfeit as team2_forfeit, t2.logo_path as team2_logo,
            w.team_name as winner_name,
            ts.slot_label as group_label
     FROM matches m
@@ -51,7 +51,7 @@ $matches = $matchesStmt->fetchAll();
 
 // Get standings
 $standingsStmt = $db->prepare("
-    SELECT rrs.*, t.team_name
+    SELECT rrs.*, t.team_name, t.is_forfeit, t.logo_path
     FROM round_robin_standings rrs
     JOIN teams t ON rrs.team_id = t.id
     WHERE rrs.tournament_id = ?
@@ -137,7 +137,7 @@ $isTwoStage = ($tournament['tournament_type'] === 'two_stage');
                             <?php foreach ($groupStandings as $s): ?>
                             <tr class="<?php echo $isTwoStage && ($s['ranking'] ?? 999) <= $advanceCount ? 'advancing' : ''; ?>">
                                 <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                                <td class="team-name"><?php echo htmlspecialchars($s['team_name']); ?></td>
+                                <td class="team-name"><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'sm'); ?></td>
                                 <td class="stat-col"><?php echo $s['wins']; ?></td>
                                 <td class="stat-col"><?php echo $s['losses']; ?></td>
                                 <td class="stat-col"><?php echo $s['draws']; ?></td>
@@ -168,11 +168,11 @@ $isTwoStage = ($tournament['tournament_type'] === 'two_stage');
                                     <span class="display-match-status <?php echo $match['status']; ?>"><?php echo ucfirst($match['status']); ?></span>
                                 </div>
                                 <div class="display-match-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                                    <span class="display-match-team-name"><?php echo $match['team1_name'] ? htmlspecialchars($match['team1_name']) : 'TBD'; ?></span>
+                                    <span class="display-match-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'sm') : 'TBD'; ?></span>
                                     <span class="display-match-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
                                 </div>
                                 <div class="display-match-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                                    <span class="display-match-team-name"><?php echo $match['team2_name'] ? htmlspecialchars($match['team2_name']) : 'TBD'; ?></span>
+                                    <span class="display-match-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'sm') : 'TBD'; ?></span>
                                     <span class="display-match-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
                                 </div>
                             </div>

@@ -20,7 +20,7 @@ if (!$tournament) {
 
 // Get teams
 $teamsStmt = $db->prepare("
-    SELECT t.team_name, t.captain_name, t.status, t.seed,
+    SELECT t.team_name, t.captain_name, t.status, t.seed, t.is_forfeit, t.logo_path,
            ts.slot_label, ts.slot_date, ts.slot_time
     FROM teams t
     LEFT JOIN time_slots ts ON t.time_slot_id = ts.id
@@ -33,8 +33,8 @@ $teams = $teamsStmt->fetchAll();
 // Get matches (include group label for two-stage)
 $matchesStmt = $db->prepare("
     SELECT m.*,
-           t1.team_name as team1_name,
-           t2.team_name as team2_name,
+           t1.team_name as team1_name, t1.is_forfeit as team1_forfeit, t1.logo_path as team1_logo,
+           t2.team_name as team2_name, t2.is_forfeit as team2_forfeit, t2.logo_path as team2_logo,
            w.team_name as winner_name,
            ts.slot_label as group_label
     FROM matches m
@@ -59,7 +59,7 @@ $timeSlots = $slotsStmt->fetchAll();
 
 // Get standings (include group info, order by group for two-stage)
 $standingsStmt = $db->prepare("
-    SELECT rrs.*, t.team_name
+    SELECT rrs.*, t.team_name, t.is_forfeit, t.logo_path
     FROM round_robin_standings rrs
     JOIN teams t ON rrs.team_id = t.id
     WHERE rrs.tournament_id = ?
@@ -92,10 +92,13 @@ $typeLabels = [
     'double_elimination' => 'Double Elimination',
     'round_robin' => 'Round Robin',
     'two_stage' => 'Two Stage',
+    'league' => 'League',
 ];
+$isLeague = ($tournament['tournament_type'] === 'league');
+$hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 
 $pageTitle = $tournament['name'];
-$extraScripts = ['/assets/js/bracket.js'];
+$extraScripts = ['/assets/js/bracket.js?v=3'];
 include __DIR__ . '/includes/header.php';
 ?>
 
@@ -150,8 +153,19 @@ include __DIR__ . '/includes/header.php';
 
     <!-- Info Panel -->
     <div class="stage-panel active" id="stage-info">
+    <?php elseif ($isLeague): ?>
+    <!-- League Tabs -->
+    <div class="two-stage-tabs">
+        <button class="two-stage-tab active" data-stage="info">Info</button>
+        <button class="two-stage-tab" data-stage="schedule">Schedule</button>
+        <button class="two-stage-tab" data-stage="standings">Standings</button>
+        <button class="two-stage-tab" data-stage="teams">Teams (<?php echo count($teams); ?>)</button>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="stage-panel active" id="stage-info">
     <?php else: ?>
-    <!-- Non-two-stage: show info first -->
+    <!-- Non-tabbed: show info first -->
     <div>
     <?php endif; ?>
 
@@ -265,7 +279,7 @@ include __DIR__ . '/includes/header.php';
                             <?php foreach ($groupStandings as $s): ?>
                             <tr class="<?php echo ($s['ranking'] ?? 999) <= $advanceCount ? 'advancing' : ''; ?>">
                                 <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                                <td><strong><?php echo h($s['team_name']); ?></strong></td>
+                                <td><strong><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'xs'); ?></strong></td>
                                 <td><?php echo $s['wins']; ?></td>
                                 <td><?php echo $s['losses']; ?></td>
                                 <td><?php echo $s['draws']; ?></td>
@@ -297,11 +311,11 @@ include __DIR__ . '/includes/header.php';
                         <?php foreach ($roundMatches as $match): ?>
                         <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
                             <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                                <span class="bracket-team-name"><?php echo $match['team1_name'] ? h($match['team1_name']) : 'TBD'; ?></span>
+                                <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
                                 <span class="bracket-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
                             </div>
                             <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                                <span class="bracket-team-name"><?php echo $match['team2_name'] ? h($match['team2_name']) : 'TBD'; ?></span>
+                                <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
                                 <span class="bracket-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
                             </div>
                         </div>
@@ -367,7 +381,7 @@ include __DIR__ . '/includes/header.php';
                             <?php foreach ($groupStandings as $s): ?>
                             <tr class="<?php echo ($s['ranking'] ?? 999) <= $advanceCount ? 'advancing' : ''; ?>">
                                 <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                                <td><strong><?php echo h($s['team_name']); ?></strong></td>
+                                <td><strong><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'xs'); ?></strong></td>
                                 <td><?php echo $s['wins']; ?></td>
                                 <td><?php echo $s['losses']; ?></td>
                                 <td><?php echo $s['draws']; ?></td>
@@ -420,7 +434,7 @@ include __DIR__ . '/includes/header.php';
                         <?php foreach ($standings as $s): ?>
                         <tr>
                             <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
-                            <td><strong><?php echo h($s['team_name']); ?></strong></td>
+                            <td><strong><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'xs'); ?></strong></td>
                             <td><?php echo $s['wins']; ?></td>
                             <td><?php echo $s['losses']; ?></td>
                             <td><?php echo $s['draws']; ?></td>
@@ -445,11 +459,11 @@ include __DIR__ . '/includes/header.php';
                 <?php foreach ($roundMatches as $match): ?>
                 <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
                     <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                        <span class="bracket-team-name"><?php echo $match['team1_name'] ? h($match['team1_name']) : 'TBD'; ?></span>
+                        <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
                         <span class="bracket-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
                     </div>
                     <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
-                        <span class="bracket-team-name"><?php echo $match['team2_name'] ? h($match['team2_name']) : 'TBD'; ?></span>
+                        <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
                         <span class="bracket-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
                     </div>
                 </div>
@@ -462,6 +476,11 @@ include __DIR__ . '/includes/header.php';
 
     <!-- Bracket Display (Single/Double Elimination) -->
     <?php if (isset($groupedMatchesByRound['winners'])): ?>
+    <?php
+    $isCompact = ($tournament['bracket_display'] ?? 'full') === 'compact';
+    $winnersRoundKeys = array_keys($groupedMatchesByRound['winners']);
+    $totalOriginalRounds = count($winnersRoundKeys);
+    ?>
     <div class="card fade-in">
         <h3>
             <?php if ($tournament['tournament_type'] === 'double_elimination' || (isset($groupedMatchesByRound['losers']))): ?>
@@ -471,31 +490,63 @@ include __DIR__ . '/includes/header.php';
             <?php endif; ?>
         </h3>
         <div class="bracket-container">
-            <div class="bracket" id="winners-bracket">
-                <?php foreach ($groupedMatchesByRound['winners'] as $round => $roundMatches): ?>
+            <div class="bracket-tree" id="winners-bracket">
+                <?php
+                $isFirstDisplayedRound = true;
+                foreach ($winnersRoundKeys as $rIdx => $round):
+                    $roundMatches = $groupedMatchesByRound['winners'][$round];
+                    $isLastRound = ($rIdx === count($winnersRoundKeys) - 1);
+                    // In compact mode, check if this entire round is byes — skip it
+                    if ($isCompact) {
+                        $hasRealMatch = false;
+                        foreach ($roundMatches as $m) {
+                            $isBye = ($m['status'] === 'completed' && (!$m['team1_id'] || !$m['team2_id']))
+                                  || (!$m['team1_id'] && !$m['team2_id']);
+                            if (!$isBye) { $hasRealMatch = true; break; }
+                        }
+                        if (!$hasRealMatch) continue;
+                    }
+                    $showLeftConnector = !$isFirstDisplayedRound;
+                    $isFirstDisplayedRound = false;
+                ?>
                 <div class="bracket-round">
                     <div class="bracket-round-title">
                         <?php
-                        $totalRounds = count($groupedMatchesByRound['winners']);
-                        if ($round === $totalRounds) echo 'Final';
-                        elseif ($round === $totalRounds - 1) echo 'Semifinals';
-                        elseif ($round === $totalRounds - 2) echo 'Quarterfinals';
+                        if ($round === $totalOriginalRounds) echo 'Final';
+                        elseif ($round === $totalOriginalRounds - 1) echo 'Semifinals';
+                        elseif ($round === $totalOriginalRounds - 2) echo 'Quarterfinals';
                         else echo 'Round ' . $round;
                         ?>
                     </div>
-                    <?php foreach ($roundMatches as $match): ?>
-                    <div class="bracket-match">
-                        <div class="bracket-match-header">Match <?php echo $match['match_number']; ?></div>
-                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team1_id'] ? 'loser' : ''); ?> <?php echo !$match['team1_id'] ? 'tbd' : ''; ?>">
-                            <span class="bracket-team-name"><?php echo $match['team1_name'] ? h($match['team1_name']) : 'TBD'; ?></span>
-                            <span class="bracket-team-score"><?php echo $match['team1_score'] ?? ''; ?></span>
+                    <div class="bracket-round-matches">
+                        <?php foreach ($roundMatches as $match): ?>
+                        <?php
+                        $isByeMatch = ($match['status'] === 'completed' && (!$match['team1_id'] || !$match['team2_id']));
+                        // In compact mode, skip individual bye matches entirely
+                        if ($isCompact && $isByeMatch) continue;
+                        // Determine TBD vs BYE label for empty slots
+                        $team1Label = 'TBD';
+                        $team2Label = 'TBD';
+                        if (!$match['team1_id'] && $isByeMatch) $team1Label = 'BYE';
+                        if (!$match['team2_id'] && $isByeMatch) $team2Label = 'BYE';
+                        ?>
+                        <div class="bracket-match-wrapper" data-match-number="<?php echo $match['match_number']; ?>">
+                            <?php if ($showLeftConnector): ?><div class="bracket-connector-left"></div><?php endif; ?>
+                            <div class="bracket-match <?php echo $isByeMatch ? 'bracket-match-bye' : ''; ?>">
+                                <div class="bracket-match-header">Match <?php echo $match['match_number']; ?></div>
+                                <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team1_id'] ? 'loser' : ''); ?> <?php echo !$match['team1_id'] ? 'tbd' : ''; ?>">
+                                    <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : $team1Label; ?></span>
+                                    <span class="bracket-team-score"><?php echo $match['team1_score'] ?? ''; ?></span>
+                                </div>
+                                <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team2_id'] ? 'loser' : ''); ?> <?php echo !$match['team2_id'] ? 'tbd' : ''; ?>">
+                                    <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : $team2Label; ?></span>
+                                    <span class="bracket-team-score"><?php echo $match['team2_score'] ?? ''; ?></span>
+                                </div>
+                            </div>
+                            <?php if (!$isLastRound): ?><div class="bracket-connector-right"></div><?php endif; ?>
                         </div>
-                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team2_id'] ? 'loser' : ''); ?> <?php echo !$match['team2_id'] ? 'tbd' : ''; ?>">
-                            <span class="bracket-team-name"><?php echo $match['team2_name'] ? h($match['team2_name']) : 'TBD'; ?></span>
-                            <span class="bracket-team-score"><?php echo $match['team2_score'] ?? ''; ?></span>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endforeach; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -508,23 +559,39 @@ include __DIR__ . '/includes/header.php';
     <div class="card fade-in">
         <h3>Losers Bracket</h3>
         <div class="bracket-container">
-            <div class="bracket" id="losers-bracket">
-                <?php foreach ($groupedMatchesByRound['losers'] as $round => $roundMatches): ?>
+            <div class="bracket-tree" id="losers-bracket">
+                <?php
+                $losersRoundKeys = array_keys($groupedMatchesByRound['losers']);
+                foreach ($losersRoundKeys as $rIdx => $round):
+                    $roundMatches = $groupedMatchesByRound['losers'][$round];
+                    $isLastRound = ($rIdx === count($losersRoundKeys) - 1);
+                ?>
                 <div class="bracket-round">
                     <div class="bracket-round-title">Round <?php echo $round; ?></div>
-                    <?php foreach ($roundMatches as $match): ?>
-                    <div class="bracket-match">
-                        <div class="bracket-match-header">Match <?php echo $match['match_number']; ?></div>
-                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team1_id'] ? 'loser' : ''); ?> <?php echo !$match['team1_id'] ? 'tbd' : ''; ?>">
-                            <span class="bracket-team-name"><?php echo $match['team1_name'] ? h($match['team1_name']) : 'TBD'; ?></span>
-                            <span class="bracket-team-score"><?php echo $match['team1_score'] ?? ''; ?></span>
+                    <div class="bracket-round-matches">
+                        <?php foreach ($roundMatches as $match): ?>
+                        <?php
+                        $isByeMatch = ($match['status'] === 'completed' && (!$match['team1_id'] || !$match['team2_id']));
+                        $team1Label = !$match['team1_id'] && $isByeMatch ? 'BYE' : 'TBD';
+                        $team2Label = !$match['team2_id'] && $isByeMatch ? 'BYE' : 'TBD';
+                        ?>
+                        <div class="bracket-match-wrapper" data-match-number="<?php echo $match['match_number']; ?>">
+                            <?php if ($rIdx > 0): ?><div class="bracket-connector-left"></div><?php endif; ?>
+                            <div class="bracket-match <?php echo $isByeMatch ? 'bracket-match-bye' : ''; ?>">
+                                <div class="bracket-match-header">Match <?php echo $match['match_number']; ?></div>
+                                <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team1_id'] ? 'loser' : ''); ?> <?php echo !$match['team1_id'] ? 'tbd' : ''; ?>">
+                                    <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : $team1Label; ?></span>
+                                    <span class="bracket-team-score"><?php echo $match['team1_score'] ?? ''; ?></span>
+                                </div>
+                                <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team2_id'] ? 'loser' : ''); ?> <?php echo !$match['team2_id'] ? 'tbd' : ''; ?>">
+                                    <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : $team2Label; ?></span>
+                                    <span class="bracket-team-score"><?php echo $match['team2_score'] ?? ''; ?></span>
+                                </div>
+                            </div>
+                            <?php if (!$isLastRound): ?><div class="bracket-connector-right"></div><?php endif; ?>
                         </div>
-                        <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' && $match['team2_id'] ? 'loser' : ''); ?> <?php echo !$match['team2_id'] ? 'tbd' : ''; ?>">
-                            <span class="bracket-team-name"><?php echo $match['team2_name'] ? h($match['team2_name']) : 'TBD'; ?></span>
-                            <span class="bracket-team-score"><?php echo $match['team2_score'] ?? ''; ?></span>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php endforeach; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -538,14 +605,14 @@ include __DIR__ . '/includes/header.php';
         <h3 style="color: var(--color-gold);">Grand Final</h3>
         <?php foreach ($groupedMatchesByRound['grand_final'] as $round => $roundMatches): ?>
             <?php foreach ($roundMatches as $match): ?>
-            <div class="bracket-match" style="max-width: 300px; margin: 0 auto;">
-                <div class="bracket-match-header">Grand Final</div>
+            <div class="bracket-match" style="max-width: 300px; margin: 0 auto; border: 2px solid var(--color-gold);">
+                <div class="bracket-match-header" style="background: rgba(254, 214, 17, 0.15); color: var(--color-gold);">Grand Final</div>
                 <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ''; ?> <?php echo !$match['team1_id'] ? 'tbd' : ''; ?>">
-                    <span class="bracket-team-name"><?php echo $match['team1_name'] ? h($match['team1_name']) : 'TBD'; ?></span>
+                    <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
                     <span class="bracket-team-score"><?php echo $match['team1_score'] ?? ''; ?></span>
                 </div>
                 <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ''; ?> <?php echo !$match['team2_id'] ? 'tbd' : ''; ?>">
-                    <span class="bracket-team-name"><?php echo $match['team2_name'] ? h($match['team2_name']) : 'TBD'; ?></span>
+                    <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
                     <span class="bracket-team-score"><?php echo $match['team2_score'] ?? ''; ?></span>
                 </div>
             </div>
@@ -563,6 +630,87 @@ include __DIR__ . '/includes/header.php';
     </div><!-- /stage-elimination -->
 
     <!-- Teams Panel (Two-Stage) -->
+    <div class="stage-panel" id="stage-teams">
+    <?php elseif ($isLeague): ?>
+
+    <!-- League Schedule Panel -->
+    <div class="stage-panel" id="stage-schedule">
+        <?php if (isset($groupedMatchesByRound['round_robin']) && !empty($groupedMatchesByRound['round_robin'])): ?>
+            <?php foreach ($groupedMatchesByRound['round_robin'] as $round => $roundMatches): ?>
+            <div class="card fade-in" style="margin-bottom: 16px;">
+                <h3>Week <?php echo $round; ?></h3>
+                <?php foreach ($roundMatches as $match): ?>
+                <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
+                    <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
+                        <span class="bracket-team-name"><?php echo $match['team1_name'] ? teamNameHtml($match['team1_name'], $match['team1_forfeit'] ?? 0, $match['team1_logo'] ?? null, 'xs') : 'TBD'; ?></span>
+                        <span class="bracket-team-score"><?php echo $match['team1_score'] ?? '-'; ?></span>
+                    </div>
+                    <div class="bracket-team <?php echo $match['winner_id'] == $match['team2_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
+                        <span class="bracket-team-name"><?php echo $match['team2_name'] ? teamNameHtml($match['team2_name'], $match['team2_forfeit'] ?? 0, $match['team2_logo'] ?? null, 'xs') : 'TBD'; ?></span>
+                        <span class="bracket-team-score"><?php echo $match['team2_score'] ?? '-'; ?></span>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="empty-state">
+                <p class="text-muted">The league schedule will appear after matches are generated.</p>
+            </div>
+        <?php endif; ?>
+    </div><!-- /stage-schedule -->
+
+    <!-- League Standings Panel -->
+    <div class="stage-panel" id="stage-standings">
+        <?php if (!empty($standings)): ?>
+            <div class="card fade-in">
+                <h3>League Standings</h3>
+                <div class="table-wrapper standings-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="rank-col">#</th>
+                                <th>Team</th>
+                                <th>W</th>
+                                <th>L</th>
+                                <th>D</th>
+                                <th>Tot Pts</th>
+                                <th>Avg</th>
+                                <th>PF</th>
+                                <th>PA</th>
+                                <th>+/-</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($standings as $s): ?>
+                            <?php $gamesPlayed = $s['wins'] + $s['losses'] + $s['draws']; ?>
+                            <tr>
+                                <td class="rank-col"><?php echo $s['ranking'] ?? '-'; ?></td>
+                                <td><strong><?php echo teamNameHtml($s['team_name'], $s['is_forfeit'] ?? 0, $s['logo_path'] ?? null, 'sm'); ?></strong></td>
+                                <td><?php echo $s['wins']; ?></td>
+                                <td><?php echo $s['losses']; ?></td>
+                                <td><?php echo $s['draws']; ?></td>
+                                <td><strong><?php echo $s['points_for']; ?></strong></td>
+                                <td><?php echo $gamesPlayed > 0 ? number_format($s['points_for'] / $gamesPlayed, 1) : '0.0'; ?></td>
+                                <td><?php echo $s['points_for']; ?></td>
+                                <td><?php echo $s['points_against']; ?></td>
+                                <td style="color: <?php echo $s['point_differential'] >= 0 ? 'var(--color-success)' : 'var(--color-danger)'; ?>">
+                                    <?php echo ($s['point_differential'] >= 0 ? '+' : '') . $s['point_differential']; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="empty-state">
+                <p class="text-muted">Standings will appear after matches are generated and results recorded.</p>
+            </div>
+        <?php endif; ?>
+    </div><!-- /stage-standings -->
+
+    <!-- Teams Panel (League) -->
     <div class="stage-panel" id="stage-teams">
     <?php endif; ?>
 
@@ -586,7 +734,7 @@ include __DIR__ . '/includes/header.php';
                         <?php foreach ($teams as $i => $team): ?>
                         <tr>
                             <td><?php echo $team['seed'] ?? ($i + 1); ?></td>
-                            <td><strong><?php echo h($team['team_name']); ?></strong></td>
+                            <td><strong><?php echo teamNameHtml($team['team_name'], $team['is_forfeit'] ?? 0, $team['logo_path'] ?? null, 'sm'); ?></strong></td>
                             <td><?php echo h($team['captain_name']); ?></td>
                             <?php if ($hasTimeSlots): ?>
                             <td>
@@ -606,7 +754,7 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
 
-    <?php if ($tournament['tournament_type'] === 'two_stage'): ?>
+    <?php if ($tournament['tournament_type'] === 'two_stage' || $isLeague): ?>
     </div><!-- /stage-teams -->
     <?php endif; ?>
 
