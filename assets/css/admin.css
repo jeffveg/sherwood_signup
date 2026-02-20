@@ -209,6 +209,31 @@
 }
 
 /* ============================================================
+   AUTO-GENERATE TIME SLOTS
+   ============================================================ */
+.auto-generate-panel {
+    background: rgba(255, 161, 51, 0.05);
+    border: 1px dashed var(--color-orange);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.auto-generate-panel .form-row {
+    margin-bottom: 0;
+}
+
+.auto-generate-panel .form-group {
+    margin-bottom: 12px;
+}
+
+.auto-generate-panel .form-hint {
+    font-size: 12px;
+    opacity: 0.6;
+    margin-top: 4px;
+}
+
+/* ============================================================
    MATCH EDITOR
    ============================================================ */
 .match-editor {

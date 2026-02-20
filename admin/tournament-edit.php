@@ -296,6 +296,70 @@ include __DIR__ . '/../includes/header.php';
                     : 'Manage time slots for team sign-ups.'; ?>
             </p>
 
+            <!-- Auto-Generate Time Slots -->
+            <div class="auto-generate-panel">
+                <button type="button" class="btn btn-secondary btn-small" id="toggle-auto-generate"
+                        onclick="toggleAutoGenerate()">
+                    <?php echo $tournament['tournament_type'] === 'two_stage' ? '&#9881; Auto-Generate Groups' : '&#9881; Auto-Generate Slots'; ?>
+                </button>
+
+                <div id="auto-generate-fields" class="hidden" style="margin-top: 16px;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gen_start_date">Start Date</label>
+                            <input type="date" id="gen_start_date" class="form-control">
+                            <span class="form-hint">Defaults to tournament start date</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="gen_time">Time of Day</label>
+                            <input type="time" id="gen_time" class="form-control" value="10:00">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gen_frequency">Frequency</label>
+                            <select id="gen_frequency" class="form-control">
+                                <option value="7">Weekly</option>
+                                <option value="14">Biweekly (Every 2 Weeks)</option>
+                                <option value="21">Every 3 Weeks</option>
+                                <option value="28">Monthly (Every 4 Weeks)</option>
+                                <option value="1">Daily</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="gen_count">Number of Slots</label>
+                            <input type="number" id="gen_count" class="form-control" value="8" min="1" max="52">
+                            <span class="form-hint">How many time slots to create</span>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gen_max_teams">Max Teams Per Slot</label>
+                            <input type="number" id="gen_max_teams" class="form-control" value="3" min="1" max="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="gen_label_prefix">Label Style</label>
+                            <select id="gen_label_prefix" class="form-control">
+                                <option value="week" <?php echo $tournament['tournament_type'] === 'league' ? 'selected' : ''; ?>>Week 1, Week 2...</option>
+                                <option value="round" <?php echo $tournament['tournament_type'] === 'round_robin' ? 'selected' : ''; ?>>Round 1, Round 2...</option>
+                                <option value="session">Session 1, Session 2...</option>
+                                <option value="group" <?php echo $tournament['tournament_type'] === 'two_stage' ? 'selected' : ''; ?>>Group A, Group B...</option>
+                                <option value="date">Use date as label</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 12px; display: flex; gap: 10px;">
+                        <button type="button" class="btn btn-primary btn-small" onclick="generateTimeSlots()">
+                            Generate Slots
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="toggleAutoGenerate()">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div id="time-slots-container">
                 <?php foreach ($timeSlots as $slot): ?>
                 <div class="slot-row">
@@ -465,6 +529,17 @@ document.getElementById('tournament_type').addEventListener('change', function()
         ? 'Define groups for the group stage. Teams will sign up for a specific group.'
         : 'Manage time slots for team sign-ups.';
     if (addBtn) addBtn.textContent = isTwoStage ? '+ Add Group' : '+ Add Time Slot';
+
+    // Auto-set label prefix for auto-generate panel
+    var prefixSelect = document.getElementById('gen_label_prefix');
+    if (prefixSelect) {
+        if (type === 'league') prefixSelect.value = 'week';
+        else if (type === 'round_robin') prefixSelect.value = 'round';
+        else if (type === 'two_stage') prefixSelect.value = 'group';
+    }
+    // Update auto-generate button text
+    var autoBtn = document.getElementById('toggle-auto-generate');
+    if (autoBtn) autoBtn.textContent = isTwoStage ? '\u2699 Auto-Generate Groups' : '\u2699 Auto-Generate Slots';
 });
 
 function addTimeSlot() {
@@ -495,6 +570,151 @@ function addTimeSlot() {
         </div>
     `;
     container.appendChild(row);
+}
+
+// --- Auto-Generate Time Slots ---
+
+function toggleAutoGenerate() {
+    var fields = document.getElementById('auto-generate-fields');
+    var isHidden = fields.classList.contains('hidden');
+    fields.classList.toggle('hidden');
+
+    if (isHidden) {
+        var startDate = document.getElementById('start_date');
+        var genStartDate = document.getElementById('gen_start_date');
+        if (startDate && startDate.value && !genStartDate.value) {
+            genStartDate.value = startDate.value;
+        }
+
+        var tournamentType = document.getElementById('tournament_type').value;
+        var prefixSelect = document.getElementById('gen_label_prefix');
+        if (tournamentType === 'league') prefixSelect.value = 'week';
+        else if (tournamentType === 'round_robin') prefixSelect.value = 'round';
+        else if (tournamentType === 'two_stage') prefixSelect.value = 'group';
+    }
+}
+
+function generateTimeSlots() {
+    var startDate = document.getElementById('gen_start_date').value;
+    var time = document.getElementById('gen_time').value;
+    var frequency = parseInt(document.getElementById('gen_frequency').value, 10);
+    var count = parseInt(document.getElementById('gen_count').value, 10);
+    var maxTeams = parseInt(document.getElementById('gen_max_teams').value, 10);
+    var labelPrefix = document.getElementById('gen_label_prefix').value;
+
+    if (!startDate) {
+        alert('Please select a start date.');
+        document.getElementById('gen_start_date').focus();
+        return;
+    }
+    if (!time) {
+        alert('Please select a time.');
+        document.getElementById('gen_time').focus();
+        return;
+    }
+    if (count < 1 || count > 52) {
+        alert('Number of slots must be between 1 and 52.');
+        return;
+    }
+
+    var container = document.getElementById('time-slots-container');
+    var existingRows = container.querySelectorAll('.slot-row');
+
+    if (existingRows.length > 0) {
+        // Check how many are saved in DB (have a slot_id value)
+        var dbCount = 0;
+        existingRows.forEach(function(row) {
+            var idInput = row.querySelector('input[name="slot_ids[]"]');
+            if (idInput && idInput.value) dbCount++;
+        });
+        var warning = dbCount > 0
+            ? '<br><strong style="color: var(--color-danger);">Note:</strong> ' + dbCount + ' slot(s) exist in the database and may have teams assigned.'
+            : '';
+
+        showConfirmModal(
+            'Replace Existing Slots?',
+            'There are ' + existingRows.length + ' existing time slot(s). Do you want to replace them with the generated slots?' + warning,
+            function() {
+                existingRows.forEach(function(row) { row.remove(); });
+                doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix);
+            }
+        );
+    } else {
+        doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix);
+    }
+}
+
+function doGenerateSlots(startDate, time, frequency, count, maxTeams, labelPrefix) {
+    var currentDate = new Date(startDate + 'T00:00:00');
+    var container = document.getElementById('time-slots-container');
+    var isEditPage = window.location.href.indexOf('tournament-edit') !== -1;
+
+    for (var i = 0; i < count; i++) {
+        var year = currentDate.getFullYear();
+        var month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        var day = String(currentDate.getDate()).padStart(2, '0');
+        var dateStr = year + '-' + month + '-' + day;
+
+        var label = '';
+        if (labelPrefix === 'week') label = 'Week ' + (i + 1);
+        else if (labelPrefix === 'round') label = 'Round ' + (i + 1);
+        else if (labelPrefix === 'session') label = 'Session ' + (i + 1);
+        else if (labelPrefix === 'group') label = 'Group ' + numberToLetters(i);
+        else if (labelPrefix === 'date') {
+            label = currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+
+        var row = document.createElement('div');
+        row.className = 'slot-row';
+        var hiddenIdHtml = isEditPage ? '<input type="hidden" name="slot_ids[]" value="">' : '';
+        row.innerHTML = hiddenIdHtml +
+            '<div class="form-group">' +
+                '<label>Date</label>' +
+                '<input type="date" name="slot_dates[]" class="form-control" value="' + dateStr + '" required>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>Time</label>' +
+                '<input type="time" name="slot_times[]" class="form-control" value="' + time + '" required>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>Label</label>' +
+                '<input type="text" name="slot_labels[]" class="form-control" value="' + label + '">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>Max Teams</label>' +
+                '<input type="number" name="slot_max_teams[]" class="form-control" value="' + maxTeams + '" min="1" max="50">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>&nbsp;</label>' +
+                '<button type="button" class="btn btn-danger btn-small" onclick="this.closest(\'.slot-row\').remove()">Remove</button>' +
+            '</div>';
+
+        container.appendChild(row);
+        currentDate.setDate(currentDate.getDate() + frequency);
+    }
+
+    document.getElementById('auto-generate-fields').classList.add('hidden');
+
+    var endDateField = document.getElementById('end_date');
+    if (endDateField && !endDateField.value) {
+        var lastDate = new Date(currentDate);
+        lastDate.setDate(lastDate.getDate() - frequency);
+        var ey = lastDate.getFullYear();
+        var em = String(lastDate.getMonth() + 1).padStart(2, '0');
+        var ed = String(lastDate.getDate()).padStart(2, '0');
+        endDateField.value = ey + '-' + em + '-' + ed;
+    }
+}
+
+function numberToLetters(n) {
+    var result = '';
+    n = n + 1;
+    while (n > 0) {
+        n--;
+        result = String.fromCharCode(65 + (n % 26)) + result;
+        n = Math.floor(n / 26);
+    }
+    return result;
 }
 </script>
 
