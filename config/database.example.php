@@ -81,3 +81,68 @@ function getFlash() {
     }
     return null;
 }
+
+/**
+ * Get custom round labels for a tournament.
+ * Returns associative array: round_number => ['label' => ..., 'round_date' => ...]
+ */
+function getRoundLabels($db, $tournamentId) {
+    $stmt = $db->prepare("SELECT round_number, label, round_date FROM round_labels WHERE tournament_id = ? ORDER BY round_number");
+    $stmt->execute([$tournamentId]);
+    $labels = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $labels[$r['round_number']] = $r;
+    }
+    return $labels;
+}
+
+/**
+ * Render team name HTML with optional logo and forfeit styling
+ */
+function teamNameHtml($name, $isForfeit = 0, $logoPath = null, $size = 'sm') {
+    $sizes = ['xs' => 16, 'sm' => 24, 'md' => 32, 'lg' => 48];
+    $px = $sizes[$size] ?? 24;
+    $html = '';
+
+    if ($logoPath) {
+        $html .= '<img src="/uploads/logos/' . htmlspecialchars($logoPath) . '" class="team-logo" width="' . $px . '" height="' . $px . '" alt="">';
+    }
+
+    if ($isForfeit) {
+        $html .= '<span class="team-forfeit"><s>' . htmlspecialchars($name) . '</s> <small>(Forfeit)</small></span>';
+    } else {
+        $html .= htmlspecialchars($name);
+    }
+    return $html;
+}
+
+/**
+ * Handle team logo upload from $_FILES['team_logo']
+ * Returns the filename on success, null on failure/no upload.
+ */
+function handleLogoUpload($teamId) {
+    if (empty($_FILES['team_logo']['name']) || $_FILES['team_logo']['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    $maxSize = 2 * 1024 * 1024; // 2MB
+    $file = $_FILES['team_logo'];
+
+    if (!in_array($file['type'], $allowed)) return null;
+    if ($file['size'] > $maxSize) return null;
+
+    $uploadDir = __DIR__ . '/../uploads/logos/';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $filename = 'team_' . $teamId . '_' . time() . '.' . $ext;
+    $dest = $uploadDir . $filename;
+
+    if (move_uploaded_file($file['tmp_name'], $dest)) {
+        return $filename;
+    }
+    return null;
+}

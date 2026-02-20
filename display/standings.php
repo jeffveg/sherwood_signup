@@ -6,6 +6,7 @@
  * Standalone page for TV/projector display.
  * Auto-refreshes every 30 seconds. No navigation, no auth required.
  * Usage: /display/standings.php?id=TOURNAMENT_ID
+ *        /display/standings.php?id=TOURNAMENT_ID&group=TIME_SLOT_ID  (show one group)
  */
 require_once __DIR__ . '/../config/database.php';
 
@@ -13,6 +14,7 @@ $db = getDB();
 $id = intval($_GET['id'] ?? 0);
 $refreshInterval = intval($_GET['refresh'] ?? 30);
 if ($refreshInterval < 5) $refreshInterval = 5;
+$filterGroup = isset($_GET['group']) ? intval($_GET['group']) : null;
 
 $stmt = $db->prepare("SELECT * FROM tournaments WHERE id = ?");
 $stmt->execute([$id]);
@@ -53,9 +55,26 @@ foreach ($standings as $s) {
 }
 
 $slotLabels = [];
+$slotIndex = 0;
 foreach ($timeSlots as $slot) {
+    $slotIndex++;
     $slotLabels[$slot['id']] = $slot['slot_label'] ?: date('g:i A', strtotime($slot['slot_time'])) . ' - ' . date('M j, Y', strtotime($slot['slot_date']));
 }
+
+// Build ordered group list for navigation
+$groupList = [];
+foreach ($timeSlots as $slot) {
+    if (isset($standingsByGroup[$slot['id']])) {
+        $groupList[] = $slot['id'];
+    }
+}
+if (isset($standingsByGroup['ungrouped'])) {
+    $groupList[] = 'ungrouped';
+}
+
+// Determine which group is active/focused
+$activeGroup = $filterGroup;
+$showAll = ($filterGroup === null);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -66,12 +85,49 @@ foreach ($timeSlots as $slot) {
     <title><?php echo htmlspecialchars($tournament['name']); ?> - Standings</title>
     <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Lato:wght@400;700&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/css/display.css">
+    <style>
+        .group-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        .group-nav a {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-family: 'Lato', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 1px solid var(--color-brown-border);
+            color: var(--color-light-gray);
+            background: rgba(39, 41, 42, 0.6);
+        }
+        .group-nav a:hover {
+            border-color: var(--color-orange);
+            color: var(--color-orange);
+        }
+        .group-nav a.active {
+            background: rgba(255, 161, 51, 0.15);
+            border-color: var(--color-orange);
+            color: var(--color-orange);
+        }
+        .group-row {
+            margin-bottom: 20px;
+        }
+        .group-row .display-card {
+            margin-bottom: 0;
+        }
+    </style>
 </head>
 <body>
     <div class="display-header">
         <div>
             <h1><?php echo htmlspecialchars($tournament['name']); ?></h1>
-            <span class="display-status">Standings</span>
+            <span class="display-status">Standings<?php echo ($activeGroup && isset($slotLabels[$activeGroup])) ? ' — ' . htmlspecialchars($slotLabels[$activeGroup]) : ''; ?></span>
         </div>
         <div style="text-align: right;">
             <span class="display-badge"><?php echo htmlspecialchars(ucwords(str_replace('_', ' ', $tournament['status']))); ?></span>
@@ -87,13 +143,25 @@ foreach ($timeSlots as $slot) {
                 <p>Standings will appear after matches are generated and results recorded.</p>
             </div>
         <?php elseif ($isTwoStage && count($standingsByGroup) > 1): ?>
-            <?php
-            // Per-group standings in grid layout
-            $groupCount = count($standingsByGroup);
-            $gridClass = $groupCount >= 3 ? 'display-grid-3' : ($groupCount >= 2 ? 'display-grid-2' : '');
-            ?>
-            <div class="<?php echo $gridClass; ?>">
-                <?php foreach ($standingsByGroup as $groupId => $groupStandings): ?>
+
+            <!-- Group navigation tabs -->
+            <?php if (count($groupList) > 1): ?>
+            <div class="group-nav">
+                <a href="?id=<?php echo $id; ?>&refresh=<?php echo $refreshInterval; ?>"
+                   class="<?php echo $showAll ? 'active' : ''; ?>">All Groups</a>
+                <?php foreach ($groupList as $gid): ?>
+                <a href="?id=<?php echo $id; ?>&group=<?php echo $gid; ?>&refresh=<?php echo $refreshInterval; ?>"
+                   class="<?php echo ($activeGroup !== null && $activeGroup == $gid) ? 'active' : ''; ?>">
+                    <?php echo $gid !== 'ungrouped' ? htmlspecialchars($slotLabels[$gid] ?? "Group {$gid}") : 'Ungrouped'; ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- Group rows (stacked, full-width) -->
+            <?php foreach ($standingsByGroup as $groupId => $groupStandings): ?>
+            <?php if ($activeGroup !== null && $activeGroup != $groupId) continue; ?>
+            <div class="group-row" id="group-<?php echo $groupId; ?>">
                 <div class="display-card">
                     <h2><?php echo $groupId !== 'ungrouped' ? htmlspecialchars($slotLabels[$groupId] ?? "Group {$groupId}") : 'Ungrouped'; ?></h2>
                     <table class="display-table">
@@ -127,8 +195,8 @@ foreach ($timeSlots as $slot) {
                         </tbody>
                     </table>
                 </div>
-                <?php endforeach; ?>
             </div>
+            <?php endforeach; ?>
 
             <p class="display-advance-note">
                 &#9650; Highlighted teams advance to the elimination stage (top <?php echo $advanceCount; ?> per group)

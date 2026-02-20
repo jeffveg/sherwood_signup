@@ -16,6 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tournament_type = $_POST['tournament_type'] ?? '';
     $two_stage_elimination_type = $_POST['two_stage_elimination_type'] ?? null;
     $two_stage_advance_count = intval($_POST['two_stage_advance_count'] ?? 4);
+    $league_encounters = intval($_POST['league_encounters'] ?? 1);
+    if ($league_encounters < 1) $league_encounters = 1;
     $description = trim($_POST['description'] ?? '');
     $max_teams = intval($_POST['max_teams'] ?? 16);
     $min_teams = intval($_POST['min_teams'] ?? 2);
@@ -52,15 +54,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("
             INSERT INTO tournaments
             (tournament_number, name, description, tournament_type, two_stage_elimination_type,
-             two_stage_advance_count, status, signup_mode, bracket_display, max_teams, min_teams,
+             two_stage_advance_count, league_encounters, status, signup_mode, bracket_display, max_teams, min_teams,
              start_date, end_date, registration_deadline, location, rules, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
             $tournament_number, $name, $description, $tournament_type,
             $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-            $two_stage_advance_count, $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+            $two_stage_advance_count, $league_encounters,
+            $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
             $start_date ?: null, $end_date ?: null,
             $registration_deadline ? $registration_deadline . ':00' : null,
             $location, $rules, $_SESSION['admin_id']
@@ -202,6 +205,18 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <!-- League Encounters (hidden by default) -->
+            <div id="league-encounters-option" class="hidden">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="league_encounters">Encounters (Meetings)</label>
+                        <input type="number" id="league_encounters" name="league_encounters"
+                               class="form-control" value="<?php echo h($_POST['league_encounters'] ?? '1'); ?>" min="1" max="10">
+                        <span class="form-hint">How many times each team plays every other team (e.g., 2 = home &amp; away)</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label for="max_teams">Max Teams</label>
@@ -320,6 +335,10 @@ document.getElementById('tournament_type').addEventListener('change', function()
 
     twoStageOpts.classList.toggle('hidden', type !== 'two_stage');
 
+    // Show encounters option for league and round_robin
+    const encountersOpt = document.getElementById('league-encounters-option');
+    encountersOpt.classList.toggle('hidden', type !== 'league' && type !== 'round_robin');
+
     // Show bracket display option for elimination types
     const bracketDisplayOpt = document.getElementById('bracket-display-option');
     const hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
@@ -327,7 +346,6 @@ document.getElementById('tournament_type').addEventListener('change', function()
 
     const needsSlots = (type === 'round_robin' || type === 'two_stage');
     timeSlotsSection.classList.toggle('hidden', !needsSlots);
-    // League doesn't use time slots or two-stage options
 
     // Update labels based on type (groups vs time slots)
     var isTwoStage = (type === 'two_stage');

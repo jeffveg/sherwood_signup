@@ -97,6 +97,9 @@ $typeLabels = [
 $isLeague = ($tournament['tournament_type'] === 'league');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 
+// Get round labels for league/round_robin
+$roundLabels = getRoundLabels($db, $id);
+
 $pageTitle = $tournament['name'];
 $extraScripts = ['/assets/js/bracket.js?v=3'];
 include __DIR__ . '/includes/header.php';
@@ -307,7 +310,7 @@ include __DIR__ . '/includes/header.php';
                     ?>
                     <h4 class="text-muted" style="font-size: 14px; margin: 20px 0 10px;">Match Results</h4>
                     <?php foreach ($roundsInGroup as $round => $roundMatches): ?>
-                        <h4 class="text-muted" style="font-size: 13px; margin: 10px 0 8px;">Round <?php echo $round; ?></h4>
+                        <h4 class="text-muted" style="font-size: 13px; margin: 10px 0 8px;"><?php echo h($roundLabels[$round]['label'] ?? "Round {$round}"); ?><?php if (!empty($roundLabels[$round]['round_date'])): ?> <span class="round-label-date"><?php echo date('M j', strtotime($roundLabels[$round]['round_date'])); ?></span><?php endif; ?></h4>
                         <?php foreach ($roundMatches as $match): ?>
                         <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
                             <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
@@ -455,7 +458,7 @@ include __DIR__ . '/includes/header.php';
         <div class="card fade-in">
             <h3>Round Robin Matches</h3>
             <?php foreach ($groupedMatchesByRound['round_robin'] as $round => $roundMatches): ?>
-                <h4 class="text-muted" style="font-size: 14px; margin: 15px 0 8px;">Round <?php echo $round; ?></h4>
+                <h4 class="text-muted" style="font-size: 14px; margin: 15px 0 8px;"><?php echo h($roundLabels[$round]['label'] ?? "Round {$round}"); ?><?php if (!empty($roundLabels[$round]['round_date'])): ?> <span class="round-label-date"><?php echo date('M j, Y', strtotime($roundLabels[$round]['round_date'])); ?></span><?php endif; ?></h4>
                 <?php foreach ($roundMatches as $match): ?>
                 <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
                     <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">
@@ -638,7 +641,7 @@ include __DIR__ . '/includes/header.php';
         <?php if (isset($groupedMatchesByRound['round_robin']) && !empty($groupedMatchesByRound['round_robin'])): ?>
             <?php foreach ($groupedMatchesByRound['round_robin'] as $round => $roundMatches): ?>
             <div class="card fade-in" style="margin-bottom: 16px;">
-                <h3>Week <?php echo $round; ?></h3>
+                <h3><?php echo h($roundLabels[$round]['label'] ?? "Week {$round}"); ?><?php if (!empty($roundLabels[$round]['round_date'])): ?> <span class="round-label-date"><?php echo date('M j, Y', strtotime($roundLabels[$round]['round_date'])); ?></span><?php endif; ?></h3>
                 <?php foreach ($roundMatches as $match): ?>
                 <div class="bracket-match" style="margin-bottom: 8px; max-width: 400px;">
                     <div class="bracket-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : ($match['status'] === 'completed' ? 'loser' : ''); ?>">

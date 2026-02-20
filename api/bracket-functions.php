@@ -78,6 +78,12 @@ function advanceTeamInBracket($db, $tournament, $match, $winnerId, $loserId) {
 
     if ($bracketType === 'round_robin') return; // No bracket advancement for RR
 
+    // Determine if this tournament effectively uses double elimination
+    // (either standalone DE or two-stage with DE second stage)
+    $isDoubleElim = ($tournament['tournament_type'] === 'double_elimination')
+        || ($tournament['tournament_type'] === 'two_stage'
+            && ($tournament['two_stage_elimination_type'] ?? '') === 'double_elimination');
+
     if ($bracketType === 'winners' || $bracketType === 'grand_final') {
         // Advance winner to next round in winners bracket
         $nextRound = $round + 1;
@@ -99,7 +105,7 @@ function advanceTeamInBracket($db, $tournament, $match, $winnerId, $loserId) {
         }
 
         // Winners bracket final winner → grand final (no next winners round exists)
-        if (!$nextMatch && $bracketType === 'winners' && $tournament['tournament_type'] === 'double_elimination') {
+        if (!$nextMatch && $bracketType === 'winners' && $isDoubleElim) {
             $gf = $db->prepare("SELECT id, team1_id FROM matches WHERE tournament_id = ? AND bracket_type = 'grand_final' LIMIT 1");
             $gf->execute([$tournamentId]);
             $grandFinal = $gf->fetch();
@@ -111,7 +117,7 @@ function advanceTeamInBracket($db, $tournament, $match, $winnerId, $loserId) {
         }
 
         // For double elimination, send loser to losers bracket
-        if ($tournament['tournament_type'] === 'double_elimination' && $loserId && $bracketType === 'winners') {
+        if ($isDoubleElim && $loserId && $bracketType === 'winners') {
             // Map winners round to correct losers round:
             // WR1 → LR1 (odd round, losers play each other)
             // WRn (n>1) → LR 2*(n-1) (even round, drop-in from winners)

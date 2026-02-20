@@ -100,6 +100,9 @@ function generateBracket($db, $tournament) {
     // Set status to in_progress
     $db->prepare("UPDATE tournaments SET status = 'in_progress' WHERE id = ?")->execute([$tournamentId]);
 
+    // Also clear round labels
+    $db->prepare("DELETE FROM round_labels WHERE tournament_id = ?")->execute([$tournamentId]);
+
     switch ($type) {
         case 'single_elimination':
             generateSingleElimination($db, $tournamentId, $teams);
@@ -108,13 +111,15 @@ function generateBracket($db, $tournament) {
             generateDoubleElimination($db, $tournamentId, $teams);
             break;
         case 'round_robin':
-            generateRoundRobin($db, $tournamentId, $teams);
+            $encounters = $tournament['league_encounters'] ?? 1;
+            generateRoundRobin($db, $tournamentId, $teams, $encounters);
             break;
         case 'two_stage':
             generateGroupStage($db, $tournament, $teams);
             break;
         case 'league':
-            generateRoundRobin($db, $tournamentId, $teams);
+            $encounters = $tournament['league_encounters'] ?? 1;
+            generateRoundRobin($db, $tournamentId, $teams, $encounters);
             break;
     }
 
@@ -244,7 +249,7 @@ function generateDoubleElimination($db, $tournamentId, $teams) {
     ")->execute([$tournamentId]);
 }
 
-function generateRoundRobin($db, $tournamentId, $teams) {
+function generateRoundRobin($db, $tournamentId, $teams, $encounters = 1) {
     $teamCount = count($teams);
     $stmt = $db->prepare("
         INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, status)
@@ -260,32 +265,47 @@ function generateRoundRobin($db, $tournamentId, $teams) {
         $teamCount++;
     }
 
-    $rounds = $teamCount - 1;
+    $baseRounds = $teamCount - 1;
     $matchesPerRound = $teamCount / 2;
+    $globalMatchNum = 0;
 
-    for ($round = 0; $round < $rounds; $round++) {
-        $matchNum = 0;
-        for ($match = 0; $match < $matchesPerRound; $match++) {
-            $home = ($match === 0) ? 0 : (($teamCount - 1 - $match + $round) % ($teamCount - 1) + 1);
-            $away = ($teamCount - 1 - $match + $round) % ($teamCount - 1) + 1;
+    // Repeat scheduling for each encounter
+    for ($enc = 0; $enc < $encounters; $enc++) {
+        for ($round = 0; $round < $baseRounds; $round++) {
+            $actualRound = ($enc * $baseRounds) + $round + 1;
 
-            if ($match === 0) {
-                $home = 0;
-                $away = ($round % ($teamCount - 1)) + 1;
-            } else {
-                $home = (($round + $match) % ($teamCount - 1)) + 1;
-                $away = (($round + $teamCount - 1 - $match) % ($teamCount - 1)) + 1;
+            for ($match = 0; $match < $matchesPerRound; $match++) {
+                if ($match === 0) {
+                    $home = 0;
+                    $away = ($round % ($teamCount - 1)) + 1;
+                } else {
+                    $home = (($round + $match) % ($teamCount - 1)) + 1;
+                    $away = (($round + $teamCount - 1 - $match) % ($teamCount - 1)) + 1;
+                }
+
+                $team1 = $teamIds[$home] ?? null;
+                $team2 = $teamIds[$away] ?? null;
+
+                // Skip byes
+                if ($team1 === null || $team2 === null) continue;
+
+                $globalMatchNum++;
+
+                // Alternate home/away for even encounters to balance fairness
+                if ($enc % 2 === 1) {
+                    $stmt->execute([$tournamentId, $actualRound, $globalMatchNum, $team2, $team1]);
+                } else {
+                    $stmt->execute([$tournamentId, $actualRound, $globalMatchNum, $team1, $team2]);
+                }
             }
-
-            $team1 = $teamIds[$home] ?? null;
-            $team2 = $teamIds[$away] ?? null;
-
-            // Skip byes
-            if ($team1 === null || $team2 === null) continue;
-
-            $matchNum++;
-            $stmt->execute([$tournamentId, $round + 1, $matchNum, $team1, $team2]);
         }
+    }
+
+    // Auto-create round label placeholders
+    $totalRounds = $baseRounds * $encounters;
+    $labelStmt = $db->prepare("INSERT INTO round_labels (tournament_id, round_number) VALUES (?, ?)");
+    for ($r = 1; $r <= $totalRounds; $r++) {
+        $labelStmt->execute([$tournamentId, $r]);
     }
 
     // Initialize standings

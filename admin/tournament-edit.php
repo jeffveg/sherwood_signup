@@ -39,6 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tournament_type = $_POST['tournament_type'] ?? '';
     $two_stage_elimination_type = $_POST['two_stage_elimination_type'] ?? null;
     $two_stage_advance_count = intval($_POST['two_stage_advance_count'] ?? 4);
+    $league_encounters = intval($_POST['league_encounters'] ?? 1);
+    if ($league_encounters < 1) $league_encounters = 1;
     $description = trim($_POST['description'] ?? '');
     $max_teams = intval($_POST['max_teams'] ?? 16);
     $min_teams = intval($_POST['min_teams'] ?? 2);
@@ -68,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("
             UPDATE tournaments SET
                 tournament_number = ?, name = ?, description = ?, tournament_type = ?,
-                two_stage_elimination_type = ?, two_stage_advance_count = ?,
+                two_stage_elimination_type = ?, two_stage_advance_count = ?, league_encounters = ?,
                 status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
                 start_date = ?, end_date = ?, registration_deadline = ?,
                 location = ?, rules = ?
@@ -78,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([
             $tournament_number, $name, $description, $tournament_type,
             $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-            $two_stage_advance_count, $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
+            $two_stage_advance_count, $league_encounters,
+            $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
             $start_date ?: null, $end_date ?: null,
             $registration_deadline ? $registration_deadline . ':00' : null,
             $location, $rules, $id
@@ -207,6 +210,18 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <!-- League Encounters -->
+            <div id="league-encounters-option" class="<?php echo !in_array($tournament['tournament_type'], ['league', 'round_robin']) ? 'hidden' : ''; ?>">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="league_encounters">Encounters (Meetings)</label>
+                        <input type="number" id="league_encounters" name="league_encounters"
+                               class="form-control" value="<?php echo h($tournament['league_encounters'] ?? 1); ?>" min="1" max="10">
+                        <span class="form-hint">How many times each team plays every other team (e.g., 2 = home &amp; away)</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label for="max_teams">Max Teams</label>
@@ -328,6 +343,66 @@ include __DIR__ . '/../includes/header.php';
             <button type="submit" class="btn btn-primary btn-large">Save Changes</button>
         </div>
     </form>
+
+    <?php
+    // Round Labels Editor (shown for league/round_robin after matches generated)
+    $existingRoundLabels = getRoundLabels($db, $id);
+    $hasMatches = $db->prepare("SELECT COUNT(*) FROM matches WHERE tournament_id = ? AND bracket_type = 'round_robin'");
+    $hasMatches->execute([$id]);
+    $matchCount = $hasMatches->fetchColumn();
+
+    if ($matchCount > 0 && in_array($tournament['tournament_type'], ['league', 'round_robin'])):
+        // Get distinct rounds from matches
+        $roundsStmt = $db->prepare("SELECT DISTINCT round FROM matches WHERE tournament_id = ? AND bracket_type = 'round_robin' ORDER BY round");
+        $roundsStmt->execute([$id]);
+        $rounds = $roundsStmt->fetchAll(PDO::FETCH_COLUMN);
+    ?>
+    <div class="form-section" id="round-labels" style="margin-top: 30px;">
+        <h3 class="form-section-title">Round Labels</h3>
+        <p style="margin-bottom: 20px; opacity: 0.7; font-size: 14px;">
+            Customize the label and date for each round/week. Leave blank to use the default ("Week X" for leagues, "Round X" for round robin).
+        </p>
+
+        <form method="POST" action="/api/round-labels.php">
+            <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">Round</th>
+                            <th>Custom Label</th>
+                            <th style="width: 180px;">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($rounds as $round): ?>
+                        <?php $label = $existingRoundLabels[$round] ?? []; ?>
+                        <tr>
+                            <td style="font-weight: 700; color: var(--color-gold);"><?php echo $round; ?></td>
+                            <td>
+                                <input type="text" name="rounds[<?php echo $round; ?>][label]" class="form-control"
+                                       value="<?php echo h($label['label'] ?? ''); ?>"
+                                       placeholder="<?php echo $tournament['tournament_type'] === 'league' ? "Week {$round}" : "Round {$round}"; ?>"
+                                       style="padding: 8px 12px;">
+                            </td>
+                            <td>
+                                <input type="date" name="rounds[<?php echo $round; ?>][round_date]" class="form-control"
+                                       value="<?php echo h($label['round_date'] ?? ''); ?>"
+                                       style="padding: 8px 12px;">
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 16px;">
+                <button type="submit" class="btn btn-primary btn-small">Save Round Labels</button>
+            </div>
+        </form>
+    </div>
+    <?php endif; ?>
 </div>
 
 <script>
@@ -336,11 +411,13 @@ document.getElementById('tournament_type').addEventListener('change', function()
     document.getElementById('two-stage-options').classList.toggle('hidden', type !== 'two_stage');
     document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage');
 
+    // Show encounters option for league and round_robin
+    document.getElementById('league-encounters-option').classList.toggle('hidden', type !== 'league' && type !== 'round_robin');
+
     // Show bracket display option for elimination types
     var bracketDisplayOpt = document.getElementById('bracket-display-option');
     var hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
     bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
-    // League doesn't use time slots or two-stage options
 
     // Update labels based on type (groups vs time slots)
     var isTwoStage = (type === 'two_stage');

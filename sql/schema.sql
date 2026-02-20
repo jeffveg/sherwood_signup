@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     two_stage_elimination_type ENUM('single_elimination', 'double_elimination') NULL,
     -- How many teams advance from round robin to elimination (for two_stage)
     two_stage_advance_count INT DEFAULT 4,
+    league_encounters INT DEFAULT 1,
     status ENUM('draft', 'registration_open', 'registration_closed', 'in_progress', 'completed', 'cancelled') DEFAULT 'draft',
     signup_mode ENUM('simple_form', 'account_based') DEFAULT 'simple_form',
     bracket_display ENUM('full', 'compact') DEFAULT 'full',
@@ -164,6 +165,19 @@ CREATE TABLE IF NOT EXISTS round_robin_standings (
 -- Migration for existing databases:
 -- ALTER TABLE round_robin_standings ADD COLUMN time_slot_id INT NULL AFTER team_id;
 -- ALTER TABLE round_robin_standings ADD FOREIGN KEY (time_slot_id) REFERENCES time_slots(id) ON DELETE SET NULL;
+
+-- ============================================================
+-- ROUND LABELS TABLE (custom labels/dates per round in leagues)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS round_labels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tournament_id INT NOT NULL,
+    round_number INT NOT NULL,
+    label VARCHAR(100) NULL,
+    round_date DATE NULL,
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_round_label (tournament_id, round_number)
+) ENGINE=InnoDB;
 
 -- ============================================================
 -- INDEXES for performance

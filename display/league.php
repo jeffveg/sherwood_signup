@@ -80,6 +80,9 @@ $upcomingStmt = $db->prepare("
 ");
 $upcomingStmt->execute([$id]);
 $upcomingMatches = $upcomingStmt->fetchAll();
+
+// Get round labels
+$roundLabels = getRoundLabels($db, $id);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -119,7 +122,7 @@ $upcomingMatches = $upcomingStmt->fetchAll();
                 <?php foreach ($inProgressMatches as $match): ?>
                 <div class="display-match">
                     <div class="display-match-header">
-                        <span>Week <?php echo $match['round']; ?> - Match #<?php echo $match['match_number']; ?></span>
+                        <span><?php echo htmlspecialchars($roundLabels[$match['round']]['label'] ?? "Week {$match['round']}"); ?> - Match #<?php echo $match['match_number']; ?></span>
                         <span class="display-match-status in_progress">In Progress</span>
                     </div>
                     <div class="display-match-team">
@@ -187,7 +190,7 @@ $upcomingMatches = $upcomingStmt->fetchAll();
                     <?php foreach ($recentMatches as $match): ?>
                     <div class="display-match">
                         <div class="display-match-header">
-                            <span>Week <?php echo $match['round']; ?></span>
+                            <span><?php echo htmlspecialchars($roundLabels[$match['round']]['label'] ?? "Week {$match['round']}"); ?></span>
                             <span class="display-match-status completed">Completed</span>
                         </div>
                         <div class="display-match-team <?php echo $match['winner_id'] == $match['team1_id'] ? 'winner' : 'loser'; ?>">
@@ -210,7 +213,7 @@ $upcomingMatches = $upcomingStmt->fetchAll();
                     <?php foreach ($upcomingMatches as $match): ?>
                     <div class="display-match">
                         <div class="display-match-header">
-                            <span>Week <?php echo $match['round']; ?> - Match #<?php echo $match['match_number']; ?></span>
+                            <span><?php echo htmlspecialchars($roundLabels[$match['round']]['label'] ?? "Week {$match['round']}"); ?> - Match #<?php echo $match['match_number']; ?></span>
                             <span class="display-match-status pending">Upcoming</span>
                         </div>
                         <div class="display-match-team">

@@ -910,6 +910,112 @@ tbody tr:last-child td {
 }
 
 /* ============================================================
+   AUTH TABS (login/register on signup page)
+   ============================================================ */
+.auth-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 24px;
+    border-bottom: 3px solid var(--color-brown-border);
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 12px 24px;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-light-gray);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -3px;
+    transition: all var(--transition);
+    text-align: center;
+}
+
+.auth-tab:hover {
+    color: var(--color-orange);
+}
+
+.auth-tab.active {
+    color: var(--color-gold);
+    border-bottom-color: var(--color-gold);
+}
+
+.auth-panel {
+    display: none;
+    padding-top: 4px;
+}
+
+.auth-panel.active {
+    display: block;
+}
+
+/* Captain logged-in banner */
+.captain-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(45, 122, 58, 0.15);
+    border: 1px solid var(--color-success);
+    border-radius: var(--border-radius);
+    padding: 12px 18px;
+    margin-bottom: 24px;
+    font-size: 14px;
+}
+
+/* ============================================================
+   CAPTAIN DASHBOARD
+   ============================================================ */
+.captain-team-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(70, 36, 12, 0.3);
+}
+
+.captain-team-row:last-child {
+    border-bottom: none;
+}
+
+.captain-team-info {
+    flex: 1;
+}
+
+.captain-team-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .captain-team-row {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    .captain-team-actions {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+}
+
+/* ============================================================
+   ROUND LABEL DISPLAY
+   ============================================================ */
+.round-label-date {
+    font-size: 12px;
+    opacity: 0.5;
+    margin-left: 8px;
+}
+
+/* ============================================================
    FLASH MESSAGES
    ============================================================ */
 .flash-message {

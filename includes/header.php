@@ -41,6 +41,10 @@ $isAdminPage = strpos($_SERVER['REQUEST_URI'], '/admin') !== false;
                 <ul class="nav-links">
                     <li><a href="/">Tournaments</a></li>
                     <li><a href="https://sherwoodadventure.com" target="_blank">Main Site</a></li>
+                    <?php if (function_exists('isTeamLoggedIn') && isTeamLoggedIn()): ?>
+                        <li><a href="/captain/">My Teams</a></li>
+                        <li><a href="/captain/logout.php">Logout</a></li>
+                    <?php endif; ?>
                     <?php if (isAdmin()): ?>
                         <li><a href="/admin/dashboard.php">Admin Dashboard</a></li>
                         <li><a href="/admin/logout.php">Logout</a></li>
