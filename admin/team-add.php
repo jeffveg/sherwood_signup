@@ -162,6 +162,8 @@ include __DIR__ . '/../includes/header.php';
                 </select>
             </div>
 
+            <p class="sms-policy-notice">Text Message Policy: Sherwood Adventure LLC uses text messaging for tournament updates and customer service only. We do not send promotional messages. Message and data rates may apply. Reply STOP to opt out. <a href="http://sherwoodadventure.com/terms-and-conditions.html" target="_blank">View Full Policy</a></p>
+
             <div class="flex-between mt-2">
                 <a href="/admin/tournament-manage.php?id=<?php echo $tournament_id; ?>" class="btn btn-secondary">Cancel</a>
                 <button type="submit" class="btn btn-primary">Add Team</button>

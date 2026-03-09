@@ -394,6 +394,17 @@ textarea.form-control {
     margin-top: 4px;
 }
 
+.sms-policy-notice {
+    font-size: 11px;
+    color: rgba(223, 223, 223, 0.5);
+    margin-top: 16px;
+    line-height: 1.4;
+}
+.sms-policy-notice a {
+    color: var(--color-orange);
+    text-decoration: underline;
+}
+
 .form-error {
     font-size: 13px;
     color: var(--color-danger);

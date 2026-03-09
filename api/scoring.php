@@ -83,6 +83,10 @@ try {
             handleSubmitScore($db, $input);
             break;
 
+        case 'update_score':
+            handleUpdateScore($db, $input);
+            break;
+
         default:
             http_response_code(400);
             echo json_encode([
@@ -199,7 +203,8 @@ function handleGetTournament($db) {
         LEFT JOIN teams t1 ON m.team1_id = t1.id
         LEFT JOIN teams t2 ON m.team2_id = t2.id
         WHERE m.tournament_id = ?
-        ORDER BY m.bracket_type, m.round, m.match_number
+        ORDER BY FIELD(m.bracket_type, 'round_robin', 'winners', 'losers', 'grand_final'),
+                 m.time_slot_id, m.round, m.match_number
     ");
     $matchStmt->execute([$tournament['id']]);
     $matches = $matchStmt->fetchAll();
@@ -404,6 +409,66 @@ function handleEndMatch($db, $input) {
     $db->prepare("UPDATE matches SET status = 'pending' WHERE id = ?")->execute([$matchId]);
 
     echo json_encode(['success' => true, 'message' => 'Match reverted to pending']);
+}
+
+/**
+ * POST ?action=update_score
+ * Body: {
+ *     "match_id": 123,
+ *     "team1_score": 14,   // Green team score (current in-game)
+ *     "team2_score": 8     // Yellow team score (current in-game)
+ * }
+ *
+ * Updates scores on an in-progress match WITHOUT completing it.
+ * Used for live score updates during gameplay. Does not advance brackets
+ * or recalculate standings.
+ */
+function handleUpdateScore($db, $input) {
+    $matchId = intval($input['match_id'] ?? 0);
+    $team1Score = isset($input['team1_score']) ? intval($input['team1_score']) : null;
+    $team2Score = isset($input['team2_score']) ? intval($input['team2_score']) : null;
+
+    if (!$matchId) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Provide match_id']);
+        return;
+    }
+
+    if ($team1Score === null || $team2Score === null) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Provide both team1_score and team2_score']);
+        return;
+    }
+
+    // Fetch the match
+    $stmt = $db->prepare("SELECT id, status FROM matches WHERE id = ?");
+    $stmt->execute([$matchId]);
+    $match = $stmt->fetch();
+
+    if (!$match) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'Match not found']);
+        return;
+    }
+
+    if ($match['status'] === 'completed') {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'error' => 'Match is already completed']);
+        return;
+    }
+
+    // Update scores only — do not change status, winner, or loser
+    $db->prepare("
+        UPDATE matches SET team1_score = ?, team2_score = ? WHERE id = ?
+    ")->execute([$team1Score, $team2Score, $matchId]);
+
+    echo json_encode([
+        'success'      => true,
+        'message'      => 'Live scores updated',
+        'match_id'     => (int)$matchId,
+        'team1_score'  => (int)$team1Score,
+        'team2_score'  => (int)$team2Score,
+    ]);
 }
 
 /**
