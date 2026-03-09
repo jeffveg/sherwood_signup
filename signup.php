@@ -179,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
         $team_account_id = null;
     }
     $sms_opt_in = isset($_POST['sms_opt_in']) ? 1 : 0;
+    if ($sms_opt_in && empty($captain_phone)) $sms_opt_in = 0; // Can't opt in without a phone
 
     // Validation
     if (empty($team_name)) $errors[] = 'Team name is required.';
@@ -499,11 +500,28 @@ include __DIR__ . '/includes/header.php';
                 <?php if (!empty($tournament['sms_enabled'])): ?>
                 <div class="form-group">
                     <label style="cursor: pointer; font-size: 14px;">
-                        <input type="checkbox" name="sms_opt_in" value="1"
-                               <?php echo (!isset($_POST['sms_opt_in']) || $_POST['sms_opt_in']) ? 'checked' : ''; ?>>
+                        <input type="checkbox" name="sms_opt_in" value="1" id="sms_opt_in"
+                               <?php echo (!empty($_POST['sms_opt_in'])) ? 'checked' : ''; ?>>
                         Receive tournament updates via text
                     </label>
+                    <small class="sms-phone-hint" style="display:none; color:#c0392b; margin-top:4px;">
+                        Phone number required for text updates
+                    </small>
                 </div>
+                <script>
+                (function() {
+                    var cb = document.getElementById('sms_opt_in');
+                    var phone = document.getElementById('captain_phone');
+                    var hint = document.querySelector('.sms-phone-hint');
+                    if (!cb || !phone || !hint) return;
+                    function check() {
+                        hint.style.display = (cb.checked && !phone.value.trim()) ? 'block' : 'none';
+                    }
+                    cb.addEventListener('change', check);
+                    phone.addEventListener('input', check);
+                    check();
+                })();
+                </script>
                 <?php endif; ?>
 
                 <div class="form-group">
