@@ -51,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rules = trim($_POST['rules'] ?? '');
     $signup_mode = $_POST['signup_mode'] ?? 'simple_form';
     $bracket_display = $_POST['bracket_display'] ?? 'full';
+    $sms_enabled = isset($_POST['sms_enabled']) ? 1 : 0;
     $status = $_POST['status'] ?? 'draft';
 
     // Validation
@@ -76,45 +77,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Column doesn't exist yet — skip it
         }
 
+        // SMS column added by migration-sms.sql
+        $hasSmsCol = false;
+        try {
+            $db->query("SELECT sms_enabled FROM tournaments LIMIT 0");
+            $hasSmsCol = true;
+        } catch (PDOException $e) { /* SMS migration not yet applied */ }
+
+        // Build SET clause and params dynamically based on available migrations
+        $setClauses = 'tournament_number = ?, name = ?, description = ?, tournament_type = ?,
+                    two_stage_elimination_type = ?, two_stage_advance_count = ?';
+        $params = [
+            $tournament_number, $name, $description, $tournament_type,
+            $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+            $two_stage_advance_count
+        ];
+
         if ($hasEncountersCol) {
-            $stmt = $db->prepare("
-                UPDATE tournaments SET
-                    tournament_number = ?, name = ?, description = ?, tournament_type = ?,
-                    two_stage_elimination_type = ?, two_stage_advance_count = ?, league_encounters = ?,
-                    status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
-                    start_date = ?, end_date = ?, registration_deadline = ?,
-                    location = ?, rules = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                $tournament_number, $name, $description, $tournament_type,
-                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-                $two_stage_advance_count, $league_encounters,
-                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
-                $start_date ?: null, $end_date ?: null,
-                $registration_deadline ? $registration_deadline . ':00' : null,
-                $location, $rules, $id
-            ]);
-        } else {
-            $stmt = $db->prepare("
-                UPDATE tournaments SET
-                    tournament_number = ?, name = ?, description = ?, tournament_type = ?,
-                    two_stage_elimination_type = ?, two_stage_advance_count = ?,
-                    status = ?, signup_mode = ?, bracket_display = ?, max_teams = ?, min_teams = ?,
-                    start_date = ?, end_date = ?, registration_deadline = ?,
-                    location = ?, rules = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                $tournament_number, $name, $description, $tournament_type,
-                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-                $two_stage_advance_count,
-                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
-                $start_date ?: null, $end_date ?: null,
-                $registration_deadline ? $registration_deadline . ':00' : null,
-                $location, $rules, $id
-            ]);
+            $setClauses .= ', league_encounters = ?';
+            $params[] = $league_encounters;
         }
+
+        $setClauses .= ', status = ?, signup_mode = ?, bracket_display = ?';
+        $params[] = $status;
+        $params[] = $signup_mode;
+        $params[] = $bracket_display;
+
+        if ($hasSmsCol) {
+            $setClauses .= ', sms_enabled = ?';
+            $params[] = $sms_enabled;
+        }
+
+        $setClauses .= ', max_teams = ?, min_teams = ?, start_date = ?, end_date = ?,
+                    registration_deadline = ?, location = ?, rules = ?';
+        $params[] = $max_teams;
+        $params[] = $min_teams;
+        $params[] = $start_date ?: null;
+        $params[] = $end_date ?: null;
+        $params[] = $registration_deadline ? $registration_deadline . ':00' : null;
+        $params[] = $location;
+        $params[] = $rules;
+        $params[] = $id; // WHERE id = ?
+
+        $stmt = $db->prepare("UPDATE tournaments SET {$setClauses} WHERE id = ?");
+        $stmt->execute($params);
 
         // Update time slots: delete old, insert new
         if (in_array($tournament_type, ['round_robin', 'two_stage', 'league'])) {
@@ -414,6 +420,17 @@ include __DIR__ . '/../includes/header.php';
                     </select>
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label style="cursor: pointer;">
+                        <input type="checkbox" name="sms_enabled" value="1"
+                               <?php echo ($tournament['sms_enabled'] ?? 0) ? 'checked' : ''; ?>>
+                        Enable SMS Notifications
+                    </label>
+                    <span class="form-hint">Opted-in captains receive text alerts during games via QUO ($0.01/text)</span>
+                </div>
+            </div>
+
             <div id="bracket-display-option" class="form-row <?php echo !in_array($tournament['tournament_type'], ['single_elimination', 'double_elimination', 'two_stage']) ? 'hidden' : ''; ?>">
                 <div class="form-group">
                     <label for="bracket_display">Bracket Display</label>

@@ -75,6 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $captain_name = trim($_POST['captain_name'] ?? '');
         $captain_email = trim($_POST['captain_email'] ?? '');
         $captain_phone = trim($_POST['captain_phone'] ?? '');
+        $sms_opt_in = isset($_POST['sms_opt_in']) ? 1 : 0;
         $time_slot_id = intval($_POST['time_slot_id'] ?? 0) ?: null;
         $status = $_POST['status'] ?? 'registered';
         $seed = intval($_POST['seed'] ?? 0) ?: null;
@@ -89,12 +90,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($check->fetchColumn() > 0) $errors[] = 'Another team with this name already exists.';
 
         if (empty($errors)) {
-            $stmt = $db->prepare("
-                UPDATE teams SET team_name = ?, captain_name = ?, captain_email = ?, captain_phone = ?,
-                    time_slot_id = ?, status = ?, seed = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $status, $seed, $teamId]);
+            // Check if sms_opt_in column exists (migration-sms.sql)
+            $hasSmsOptIn = false;
+            try {
+                $db->query("SELECT sms_opt_in FROM teams LIMIT 0");
+                $hasSmsOptIn = true;
+            } catch (PDOException $e) { /* SMS migration not yet applied */ }
+
+            $updateSql = "UPDATE teams SET team_name = ?, captain_name = ?, captain_email = ?, captain_phone = ?";
+            $params = [$team_name, $captain_name, $captain_email, $captain_phone];
+
+            if ($hasSmsOptIn) {
+                $updateSql .= ", sms_opt_in = ?";
+                $params[] = $sms_opt_in;
+            }
+
+            $updateSql .= ", time_slot_id = ?, status = ?, seed = ? WHERE id = ?";
+            $params[] = $time_slot_id;
+            $params[] = $status;
+            $params[] = $seed;
+            $params[] = $teamId;
+
+            $stmt = $db->prepare($updateSql);
+            $stmt->execute($params);
 
             setFlash('success', 'Team updated successfully!');
             header("Location: /admin/tournament-manage.php?id={$tournamentId}");
@@ -170,6 +188,14 @@ include __DIR__ . '/../includes/header.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label style="cursor: pointer; font-size: 14px;">
+                    <input type="checkbox" name="sms_opt_in" value="1"
+                           <?php echo ($team['sms_opt_in'] ?? 0) ? 'checked' : ''; ?>>
+                    Receive tournament updates via text
+                </label>
             </div>
 
             <?php if (!empty($timeSlots)): ?>

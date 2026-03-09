@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rules = trim($_POST['rules'] ?? '');
     $signup_mode = $_POST['signup_mode'] ?? 'simple_form';
     $bracket_display = $_POST['bracket_display'] ?? 'full';
+    $sms_enabled = isset($_POST['sms_enabled']) ? 1 : 0;
     $status = $_POST['status'] ?? 'draft';
 
     // Validation
@@ -62,41 +63,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Column doesn't exist — migration Feature 5 not yet applied
         }
 
+        // SMS column added by migration-sms.sql
+        $hasSmsCol = false;
+        try {
+            $db->query("SELECT sms_enabled FROM tournaments LIMIT 0");
+            $hasSmsCol = true;
+        } catch (PDOException $e) { /* SMS migration not yet applied */ }
+
+        // Build column list and params dynamically based on available migrations
+        $cols = 'tournament_number, name, description, tournament_type, two_stage_elimination_type,
+                 two_stage_advance_count';
+        $placeholders = '?, ?, ?, ?, ?, ?';
+        $params = [
+            $tournament_number, $name, $description, $tournament_type,
+            $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
+            $two_stage_advance_count
+        ];
+
         if ($hasEncountersCol) {
-            $stmt = $db->prepare("
-                INSERT INTO tournaments
-                (tournament_number, name, description, tournament_type, two_stage_elimination_type,
-                 two_stage_advance_count, league_encounters, status, signup_mode, bracket_display, max_teams, min_teams,
-                 start_date, end_date, registration_deadline, location, rules, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                $tournament_number, $name, $description, $tournament_type,
-                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-                $two_stage_advance_count, $league_encounters,
-                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
-                $start_date ?: null, $end_date ?: null,
-                $registration_deadline ? $registration_deadline . ':00' : null,
-                $location, $rules, $_SESSION['admin_id']
-            ]);
-        } else {
-            $stmt = $db->prepare("
-                INSERT INTO tournaments
-                (tournament_number, name, description, tournament_type, two_stage_elimination_type,
-                 two_stage_advance_count, status, signup_mode, bracket_display, max_teams, min_teams,
-                 start_date, end_date, registration_deadline, location, rules, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                $tournament_number, $name, $description, $tournament_type,
-                $tournament_type === 'two_stage' ? $two_stage_elimination_type : null,
-                $two_stage_advance_count,
-                $status, $signup_mode, $bracket_display, $max_teams, $min_teams,
-                $start_date ?: null, $end_date ?: null,
-                $registration_deadline ? $registration_deadline . ':00' : null,
-                $location, $rules, $_SESSION['admin_id']
-            ]);
+            $cols .= ', league_encounters';
+            $placeholders .= ', ?';
+            $params[] = $league_encounters;
         }
+
+        $cols .= ', status, signup_mode, bracket_display';
+        $placeholders .= ', ?, ?, ?';
+        $params[] = $status;
+        $params[] = $signup_mode;
+        $params[] = $bracket_display;
+
+        if ($hasSmsCol) {
+            $cols .= ', sms_enabled';
+            $placeholders .= ', ?';
+            $params[] = $sms_enabled;
+        }
+
+        $cols .= ', max_teams, min_teams, start_date, end_date, registration_deadline, location, rules, created_by';
+        $placeholders .= ', ?, ?, ?, ?, ?, ?, ?, ?';
+        $params[] = $max_teams;
+        $params[] = $min_teams;
+        $params[] = $start_date ?: null;
+        $params[] = $end_date ?: null;
+        $params[] = $registration_deadline ? $registration_deadline . ':00' : null;
+        $params[] = $location;
+        $params[] = $rules;
+        $params[] = $_SESSION['admin_id'];
+
+        $stmt = $db->prepare("INSERT INTO tournaments ({$cols}) VALUES ({$placeholders})");
+        $stmt->execute($params);
 
         $tournamentId = $db->lastInsertId();
 
@@ -392,6 +406,17 @@ include __DIR__ . '/../includes/header.php';
                             Registration Open
                         </option>
                     </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label style="cursor: pointer;">
+                        <input type="checkbox" name="sms_enabled" value="1"
+                               <?php echo ($_POST['sms_enabled'] ?? '') ? 'checked' : ''; ?>>
+                        Enable SMS Notifications
+                    </label>
+                    <span class="form-hint">Opted-in captains receive text alerts during games via QUO ($0.01/text)</span>
                 </div>
             </div>
 

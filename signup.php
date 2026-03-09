@@ -178,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
         $captain_phone = trim($_POST['captain_phone'] ?? '');
         $team_account_id = null;
     }
+    $sms_opt_in = isset($_POST['sms_opt_in']) ? 1 : 0;
 
     // Validation
     if (empty($team_name)) $errors[] = 'Team name is required.';
@@ -226,28 +227,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
     if (empty($errors)) {
         $regCode = generateRegistrationCode();
 
-        // Migration safety: check if team_account_id column exists in teams table.
-        // Added by Feature 8 in migration-features.sql. If not applied, fall back
-        // to INSERT without it (account link won't be saved, but team still registers).
+        // Migration safety: check which optional columns exist in teams table.
         $hasAccountCol = false;
         try {
             $db->query("SELECT team_account_id FROM teams LIMIT 0");
             $hasAccountCol = true;
         } catch (PDOException $e) { /* Feature 8 migration not yet applied */ }
 
-        if ($hasAccountCol) {
-            $stmt = $db->prepare("
-                INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, team_account_id, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'registered')
-            ");
-            $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode, $team_account_id]);
-        } else {
-            $stmt = $db->prepare("
-                INSERT INTO teams (tournament_id, team_name, captain_name, captain_email, captain_phone, time_slot_id, registration_code, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'registered')
-            ");
-            $stmt->execute([$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $regCode]);
+        $hasSmsOptIn = false;
+        try {
+            $db->query("SELECT sms_opt_in FROM teams LIMIT 0");
+            $hasSmsOptIn = true;
+        } catch (PDOException $e) { /* SMS migration not yet applied */ }
+
+        // Build INSERT dynamically based on available columns
+        $cols = 'tournament_id, team_name, captain_name, captain_email, captain_phone';
+        $placeholders = '?, ?, ?, ?, ?';
+        $params = [$tournamentId, $team_name, $captain_name, $captain_email, $captain_phone];
+
+        if ($hasSmsOptIn) {
+            $cols .= ', sms_opt_in';
+            $placeholders .= ', ?';
+            $params[] = $sms_opt_in;
         }
+
+        $cols .= ', time_slot_id, registration_code';
+        $placeholders .= ', ?, ?';
+        $params[] = $time_slot_id;
+        $params[] = $regCode;
+
+        if ($hasAccountCol) {
+            $cols .= ', team_account_id';
+            $placeholders .= ', ?';
+            $params[] = $team_account_id;
+        }
+
+        $cols .= ', status';
+        $placeholders .= ", 'registered'";
+
+        $stmt = $db->prepare("INSERT INTO teams ({$cols}) VALUES ({$placeholders})");
+        $stmt->execute($params);
 
         $teamId = $db->lastInsertId();
 
@@ -474,6 +493,16 @@ include __DIR__ . '/includes/header.php';
                                value="<?php echo h($_POST['captain_phone'] ?? ''); ?>"
                                placeholder="(555) 123-4567">
                     </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($tournament['sms_enabled'])): ?>
+                <div class="form-group">
+                    <label style="cursor: pointer; font-size: 14px;">
+                        <input type="checkbox" name="sms_opt_in" value="1"
+                               <?php echo (!isset($_POST['sms_opt_in']) || $_POST['sms_opt_in']) ? 'checked' : ''; ?>>
+                        Receive tournament updates via text
+                    </label>
                 </div>
                 <?php endif; ?>
 
