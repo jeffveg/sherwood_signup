@@ -221,6 +221,16 @@ function finishGame(matchId) {
     apiCall('finish_game', data);
 }
 
+function sendTextPrompt(teamId, teamName) {
+    var msg = prompt('Send text to ' + teamName + ':\n\n(Leave blank for default "head to the field" message, or type a custom message)');
+    if (msg === null) return; // cancelled
+    apiCall('send_sms', {team_id: teamId, message: msg}, function(result) {
+        if (result.success) {
+            alert(result.message || 'Text sent!');
+        }
+    });
+}
+
 function moveTeam(teamId, direction) {
     // Get current state from rendered queue rows
     var rows = document.querySelectorAll('.queue-row[data-team-id]');
@@ -321,6 +331,11 @@ function renderState(data) {
                 html += '<button class="btn btn-primary" onclick="checkinTeam(' + t.id + ')">Check In</button>';
             } else if (displayStatus === 'checked_in') {
                 html += '<button class="btn btn-secondary" onclick="undoCheckin(' + t.id + ')">Undo</button>';
+            }
+
+            // Send Text button (for any team with a phone number, not eliminated)
+            if (t.captain_phone && displayStatus !== 'eliminated') {
+                html += '<button class="btn btn-secondary" onclick="sendTextPrompt(' + t.id + ', \'' + esc(t.team_name).replace(/'/g, "\\'") + '\')" title="Send text to team">&#x1F4F1; Text</button>';
             }
 
             html += '</div>';

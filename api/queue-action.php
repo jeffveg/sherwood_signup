@@ -64,6 +64,9 @@ try {
         case 'reorder':
             handleReorder($db, $tournament, $input);
             break;
+        case 'send_sms':
+            handleSendSms($db, $tournament, $input);
+            break;
         default:
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Invalid action']);
@@ -450,5 +453,68 @@ function sendQueueLookAheadNotifications($db, $tournament, $completedMatchId) {
         if ($result['success']) {
             error_log("Queue SMS sent to {$team['team_name']} ({$normalizedPhone}): {$gamesAway} games away");
         }
+    }
+}
+
+/**
+ * Send a manual SMS to a specific team from the operator page.
+ * Accepts a custom message or uses a default "head to the field" message.
+ */
+function handleSendSms($db, $tournament, $input) {
+    $teamId = intval($input['team_id'] ?? 0);
+    $customMessage = trim($input['message'] ?? '');
+
+    if (!$teamId) {
+        echo json_encode(['success' => false, 'error' => 'Missing team_id']);
+        return;
+    }
+
+    // Get team info
+    $stmt = $db->prepare("SELECT * FROM teams WHERE id = ? AND tournament_id = ?");
+    $stmt->execute([$teamId, $tournament['id']]);
+    $team = $stmt->fetch();
+
+    if (!$team) {
+        echo json_encode(['success' => false, 'error' => 'Team not found']);
+        return;
+    }
+
+    if (empty($team['captain_phone'])) {
+        echo json_encode(['success' => false, 'error' => 'Team has no phone number']);
+        return;
+    }
+
+    $normalizedPhone = normalizePhoneNumber($team['captain_phone']);
+    if (!$normalizedPhone) {
+        echo json_encode(['success' => false, 'error' => 'Invalid phone number']);
+        return;
+    }
+
+    // Build message: use custom text or default
+    if (!empty($customMessage)) {
+        $messageBody = "Sherwood: {$team['team_name']}, {$customMessage} Reply STOP to opt out.";
+    } else {
+        $messageBody = "Sherwood: {$team['team_name']}, please head to the field! Your game is coming up. Reply STOP to opt out.";
+    }
+
+    $result = sendSms($normalizedPhone, $messageBody);
+
+    // Log with notification_type 'manual' — use 0 for match_id since this isn't tied to a specific match
+    try {
+        $db->prepare("
+            INSERT INTO sms_log (tournament_id, match_id, team_id, notification_type, phone_to, message_body, quo_message_id, status, error_message)
+            VALUES (?, 0, ?, 'manual', ?, ?, ?, ?, ?)
+        ")->execute([
+            $tournament['id'], $team['id'], $normalizedPhone, $messageBody,
+            $result['message_id'], $result['success'] ? 'sent' : 'failed', $result['error']
+        ]);
+    } catch (PDOException $e) {
+        error_log("SMS log error (manual): " . $e->getMessage());
+    }
+
+    if ($result['success']) {
+        echo json_encode(['success' => true, 'message' => "Text sent to {$team['team_name']}"]);
+    } else {
+        echo json_encode(['success' => false, 'error' => "Failed to send: {$result['error']}"]);
     }
 }
