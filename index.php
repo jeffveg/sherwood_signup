@@ -75,11 +75,17 @@ include __DIR__ . '/includes/header.php';
                             <span class="meta-label">Tournament #</span>
                             <code style="color: var(--color-orange);"><?php echo h($t['tournament_number']); ?></code>
                         </li>
+                        <!-- Queue: show team count only (no max_teams cap for walk-up events).
+                             Non-queue: show X / max_teams with "Full" badge. -->
                         <li>
                             <span class="meta-label">Teams</span>
-                            <span><?php echo $t['team_count']; ?> / <?php echo $t['max_teams']; ?></span>
-                            <?php if ($t['team_count'] >= $t['max_teams']): ?>
-                                <span class="badge badge-cancelled" style="margin-left: 5px;">Full</span>
+                            <?php if ($t['tournament_type'] === 'queue'): ?>
+                                <span><?php echo $t['team_count']; ?> signed up</span>
+                            <?php else: ?>
+                                <span><?php echo $t['team_count']; ?> / <?php echo $t['max_teams']; ?></span>
+                                <?php if ($t['team_count'] >= $t['max_teams']): ?>
+                                    <span class="badge badge-cancelled" style="margin-left: 5px;">Full</span>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </li>
                         <?php if ($t['start_date']): ?>
@@ -119,7 +125,16 @@ include __DIR__ . '/includes/header.php';
 
                 <div class="tournament-card-footer">
                     <a href="/tournament.php?id=<?php echo $t['id']; ?>" class="btn btn-primary btn-small">View Details</a>
-                    <?php if ($t['status'] === 'registration_open' && $t['team_count'] < $t['max_teams']): ?>
+                    <?php
+                    // Queue tournaments accept signups during 'in_progress' too (all-day walk-up events)
+                    $canSignUp = false;
+                    if ($t['tournament_type'] === 'queue') {
+                        $canSignUp = in_array($t['status'], ['registration_open', 'in_progress']);
+                    } else {
+                        $canSignUp = ($t['status'] === 'registration_open' && $t['team_count'] < $t['max_teams']);
+                    }
+                    ?>
+                    <?php if ($canSignUp): ?>
                         <a href="/signup.php?tournament_id=<?php echo $t['id']; ?>" class="btn btn-secondary btn-small">Sign Up</a>
                     <?php endif; ?>
                 </div>

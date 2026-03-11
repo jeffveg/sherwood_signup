@@ -78,7 +78,19 @@ foreach ($matches as $m) {
 
 // Feature flags: which tournament types support time slots and standings
 $hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
-$isRegistrationOpen = ($tournament['status'] === 'registration_open' && count($teams) < $tournament['max_teams']);
+// Queue tournaments allow signup during 'in_progress' (walk-up all-day events).
+// For queue, also check dynamic slot availability instead of max_teams.
+$isQueue = ($tournament['tournament_type'] === 'queue');
+if ($isQueue) {
+    $pendingCount = $db->prepare("SELECT COUNT(*) FROM teams WHERE tournament_id = ? AND status IN ('registered', 'checked_in')");
+    $pendingCount->execute([$id]);
+    $pendingTeams = $pendingCount->fetchColumn();
+    $queueAvailability = getQueueAvailability($tournament, $pendingTeams);
+    $isRegistrationOpen = in_array($tournament['status'], ['registration_open', 'in_progress'])
+        && ($queueAvailability['slots_remaining'] === null || $queueAvailability['registration_open']);
+} else {
+    $isRegistrationOpen = ($tournament['status'] === 'registration_open' && count($teams) < $tournament['max_teams']);
+}
 
 $statusLabels = [
     'registration_open' => 'Registration Open',
@@ -94,6 +106,7 @@ $typeLabels = [
     'round_robin' => 'Round Robin',
     'two_stage' => 'Two Stage',
     'league' => 'League',
+    'queue' => 'Queue (Walk-Up)',
 ];
 $isLeague = ($tournament['tournament_type'] === 'league');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
@@ -187,9 +200,20 @@ include __DIR__ . '/includes/header.php';
         <div class="card fade-in">
             <h3>Details</h3>
             <ul class="tournament-meta">
+                <!-- Queue: show team count + dynamic slots remaining (no max_teams cap).
+                     Non-queue: show X / max_teams registered. -->
                 <li>
                     <span class="meta-label">Teams</span>
-                    <span><?php echo count($teams); ?> / <?php echo $tournament['max_teams']; ?> registered</span>
+                    <?php if ($isQueue): ?>
+                        <span><?php echo count($teams); ?> signed up</span>
+                        <?php if (isset($queueAvailability) && $queueAvailability['slots_remaining'] !== null): ?>
+                            <span style="color: var(--color-orange); margin-left: 6px;">
+                                (<?php echo $queueAvailability['slots_remaining']; ?> slots remaining)
+                            </span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span><?php echo count($teams); ?> / <?php echo $tournament['max_teams']; ?> registered</span>
+                    <?php endif; ?>
                 </li>
                 <?php if ($tournament['registration_deadline'] && $tournament['status'] === 'registration_open'): ?>
                 <li>

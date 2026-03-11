@@ -29,6 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $signup_mode = $_POST['signup_mode'] ?? 'simple_form';
     $bracket_display = $_POST['bracket_display'] ?? 'full';
     $sms_enabled = isset($_POST['sms_enabled']) ? 1 : 0;
+    $game_duration_minutes = intval($_POST['game_duration_minutes'] ?? 0) ?: null;
+    $end_time = $_POST['end_time'] ?? null;
     $status = $_POST['status'] ?? 'draft';
 
     // Validation
@@ -97,6 +99,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cols .= ', sms_enabled';
             $placeholders .= ', ?';
             $params[] = $sms_enabled;
+        }
+
+        // Queue-specific columns (added by migration-queue-v2.sql)
+        $hasQueueV2 = false;
+        try {
+            $db->query("SELECT game_duration_minutes FROM tournaments LIMIT 0");
+            $hasQueueV2 = true;
+        } catch (PDOException $e) { /* migration-queue-v2 not yet applied */ }
+
+        if ($hasQueueV2) {
+            $cols .= ', game_duration_minutes, end_time';
+            $placeholders .= ', ?, ?';
+            $params[] = ($tournament_type === 'queue') ? $game_duration_minutes : null;
+            $params[] = $end_time ?: null;
         }
 
         $cols .= ', max_teams, min_teams, start_date, end_date, registration_deadline, location, rules, created_by';
@@ -302,6 +318,28 @@ include __DIR__ . '/../includes/header.php';
                 <input type="datetime-local" id="registration_deadline" name="registration_deadline" class="form-control"
                        value="<?php echo h($_POST['registration_deadline'] ?? ''); ?>">
             </div>
+
+            <!-- Queue: End Time + Game Duration (controls dynamic registration cutoff) -->
+            <div id="queue-schedule-options" class="hidden">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="end_time">Event End Time</label>
+                        <input type="time" id="end_time" name="end_time" class="form-control"
+                               value="<?php echo h($_POST['end_time'] ?? ''); ?>">
+                        <span class="form-hint">When the event stops accepting games (used with End Date)</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="game_duration_minutes">Game Turnaround (minutes)</label>
+                        <input type="number" id="game_duration_minutes" name="game_duration_minutes" class="form-control"
+                               value="<?php echo h($_POST['game_duration_minutes'] ?? '15'); ?>" min="1" max="120">
+                        <span class="form-hint">Time from start of one game to start of the next (play + reset)</span>
+                    </div>
+                </div>
+                <p style="font-size: 13px; opacity: 0.6; margin-top: -8px; margin-bottom: 0;">
+                    Registration will stay open while the queue is running and auto-close when there isn't enough time for new teams to play.
+                    Leave end time blank for unlimited registration.
+                </p>
+            </div>
         </div>
 
         <!-- Time Slots / Groups (for Round Robin / Two-Stage) -->
@@ -480,6 +518,10 @@ document.getElementById('tournament_type').addEventListener('change', function()
     // Queue type: hide min/max teams (registration controlled by deadline only)
     var teamLimitsRow = document.getElementById('team-limits-row');
     if (teamLimitsRow) teamLimitsRow.classList.toggle('hidden', type === 'queue');
+
+    // Queue type: show game duration and end time fields
+    var queueScheduleOpts = document.getElementById('queue-schedule-options');
+    if (queueScheduleOpts) queueScheduleOpts.classList.toggle('hidden', type !== 'queue');
 
     // Auto-check SMS enabled when queue is selected (SMS is the core feature of queue)
     var smsCheckbox = document.querySelector('input[name="sms_enabled"]');

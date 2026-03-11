@@ -86,6 +86,10 @@ $gamesPlayed = $db->prepare("SELECT COUNT(*) FROM matches WHERE tournament_id = 
 $gamesPlayed->execute([$id]);
 $gameCount = $gamesPlayed->fetchColumn();
 
+// Queue availability: remaining game slots based on end time and game duration
+$pendingTeams = ($stats['waiting'] ?? 0) + ($stats['checked_in'] ?? 0);
+$queueAvailability = getQueueAvailability($tournament, $pendingTeams);
+
 // Build "Up Next" pairings from waiting teams
 $upNextPairs = [];
 for ($i = 0; $i + 1 < count($waitingTeams); $i += 2) {
@@ -312,6 +316,13 @@ for ($i = 0; $i + 1 < count($waitingTeams); $i += 2) {
                     <div class="num"><?php echo $stats['done']; ?></div>
                     <div class="lbl">Done</div>
                 </div>
+                <?php // Show remaining games only when end_time + game_duration are configured ?>
+                <?php if ($queueAvailability['games_remaining'] !== null): ?>
+                <div class="stat-box">
+                    <div class="num"><?php echo $queueAvailability['games_remaining']; ?></div>
+                    <div class="lbl">Games Left</div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 

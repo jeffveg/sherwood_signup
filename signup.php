@@ -22,19 +22,41 @@ if (!$tournament) {
     exit;
 }
 
-// Check if registration is open
-if ($tournament['status'] !== 'registration_open') {
+$isQueue = ($tournament['tournament_type'] === 'queue');
+
+// Check if registration is open.
+// Queue tournaments accept signups during both 'registration_open' AND 'in_progress'
+// because they're all-day walk-up events. Other types only allow 'registration_open'.
+$allowedStatuses = $isQueue
+    ? ['registration_open', 'in_progress']
+    : ['registration_open'];
+
+if (!in_array($tournament['status'], $allowedStatuses)) {
     setFlash('error', 'Registration is not currently open for this tournament.');
     header("Location: /tournament.php?id={$tournamentId}");
     exit;
 }
 
-// Check if tournament is full (queue has no team cap — controlled by deadline only)
+// Count teams for capacity checks and display
 $teamCount = $db->prepare("SELECT COUNT(*) FROM teams WHERE tournament_id = ? AND status != 'withdrawn'");
 $teamCount->execute([$tournamentId]);
 $currentTeams = $teamCount->fetchColumn();
 
-if ($tournament['tournament_type'] !== 'queue' && $currentTeams >= $tournament['max_teams']) {
+// Queue: dynamic capacity check based on remaining time and game duration
+// Non-queue: simple max_teams check
+if ($isQueue) {
+    // Count pending teams (signed up but haven't played yet)
+    $pendingCount = $db->prepare("SELECT COUNT(*) FROM teams WHERE tournament_id = ? AND status IN ('registered', 'checked_in')");
+    $pendingCount->execute([$tournamentId]);
+    $pendingTeams = $pendingCount->fetchColumn();
+
+    $queueAvailability = getQueueAvailability($tournament, $pendingTeams);
+    if ($queueAvailability['slots_remaining'] !== null && !$queueAvailability['registration_open']) {
+        setFlash('error', 'Registration is closed — no more game slots available before the event ends.');
+        header("Location: /tournament.php?id={$tournamentId}");
+        exit;
+    }
+} elseif ($currentTeams >= $tournament['max_teams']) {
     setFlash('error', 'This tournament is full.');
     header("Location: /tournament.php?id={$tournamentId}");
     exit;
@@ -207,8 +229,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
         }
     }
 
-    // Re-check capacity (queue has no team cap)
-    if ($tournament['tournament_type'] !== 'queue') {
+    // Re-check capacity at submit time (race condition guard)
+    if ($tournament['tournament_type'] === 'queue') {
+        // Re-check queue availability (slots may have changed since page load)
+        $pendingCount->execute([$tournamentId]);
+        $latestPending = $pendingCount->fetchColumn();
+        $latestAvail = getQueueAvailability($tournament, $latestPending);
+        if ($latestAvail['slots_remaining'] !== null && !$latestAvail['registration_open']) {
+            $errors[] = 'Sorry, no more game slots are available before the event ends.';
+        }
+    } else {
         $teamCount->execute([$tournamentId]);
         if ($teamCount->fetchColumn() >= $tournament['max_teams']) {
             $errors[] = 'Sorry, the tournament just filled up.';
@@ -460,9 +490,19 @@ include __DIR__ . '/includes/header.php';
                         <?php echo ucwords(str_replace('_', ' ', $tournament['tournament_type'])); ?>
                     </span>
                 </p>
+                <!-- Queue: show team count + dynamic slot/wait info (no max_teams cap).
+                     Non-queue: show X / max_teams registered. -->
                 <p style="font-size: 13px; opacity: 0.5; margin-bottom: 0;">
                     <?php if ($tournament['tournament_type'] === 'queue'): ?>
                         <?php echo $currentTeams; ?> teams signed up
+                        <?php if (isset($queueAvailability)): ?>
+                            <?php if ($queueAvailability['slots_remaining'] !== null): ?>
+                                &middot; <?php echo $queueAvailability['slots_remaining']; ?> slots remaining
+                            <?php endif; ?>
+                            <?php if ($queueAvailability['est_wait_minutes'] !== null && $queueAvailability['est_wait_minutes'] > 0): ?>
+                                &middot; ~<?php echo $queueAvailability['est_wait_minutes']; ?> min wait
+                            <?php endif; ?>
+                        <?php endif; ?>
                     <?php else: ?>
                         <?php echo $currentTeams; ?> / <?php echo $tournament['max_teams']; ?> teams registered
                     <?php endif; ?>

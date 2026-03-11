@@ -21,8 +21,25 @@ define('ADMIN_EMAIL', 'admin@sherwoodadventure.com');      // CHANGE: Your admin
 // Session configuration
 define('SESSION_LIFETIME', 3600); // 1 hour
 
+// Upload configuration
+define('UPLOAD_DIR', __DIR__ . '/../uploads/logos/');
+define('MAX_LOGO_SIZE', 2 * 1024 * 1024); // 2MB
+define('ALLOWED_LOGO_TYPES', ['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
 // Timezone
 date_default_timezone_set('America/Phoenix');
+
+// Scoring API Key (used by Sherwood Timer to push/pull match data)
+// Change this to a secure random string for production
+define('SCORING_API_KEY', 'change-me-to-a-random-string');
+
+// QUO (formerly OpenPhone) SMS API Configuration
+// Used to send text notifications to team captains during tournaments.
+// Get your API key from QUO dashboard: Settings → API → Generate API Key
+// Requires A2P 10DLC registration for US business texting.
+define('QUO_API_KEY', 'your-quo-api-key-here');       // CHANGE: Your QUO API key
+define('QUO_PHONE_FROM', '+1XXXXXXXXXX');              // CHANGE: Your QUO phone number (E.164 format)
+define('QUO_API_URL', 'https://api.quo.com/v1/messages');
 
 /**
  * Get PDO database connection
@@ -118,31 +135,123 @@ function teamNameHtml($name, $isForfeit = 0, $logoPath = null, $size = 'sm') {
 
 /**
  * Handle team logo upload from $_FILES['team_logo']
- * Returns the filename on success, null on failure/no upload.
+ * Returns the filename on success, null on no file, or false on error (sets flash message)
  */
 function handleLogoUpload($teamId) {
-    if (empty($_FILES['team_logo']['name']) || $_FILES['team_logo']['error'] !== UPLOAD_ERR_OK) {
+    if (!isset($_FILES['team_logo']) || $_FILES['team_logo']['error'] === UPLOAD_ERR_NO_FILE) {
         return null;
     }
 
-    $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    $maxSize = 2 * 1024 * 1024; // 2MB
     $file = $_FILES['team_logo'];
 
-    if (!in_array($file['type'], $allowed)) return null;
-    if ($file['size'] > $maxSize) return null;
-
-    $uploadDir = __DIR__ . '/../uploads/logos/';
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        setFlash('error', 'Logo upload failed. Please try again.');
+        return false;
     }
 
-    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = 'team_' . $teamId . '_' . time() . '.' . $ext;
-    $dest = $uploadDir . $filename;
-
-    if (move_uploaded_file($file['tmp_name'], $dest)) {
-        return $filename;
+    if ($file['size'] > MAX_LOGO_SIZE) {
+        setFlash('error', 'Logo file is too large. Maximum size is 2MB.');
+        return false;
     }
-    return null;
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+
+    if (!in_array($mimeType, ALLOWED_LOGO_TYPES)) {
+        setFlash('error', 'Invalid logo file type. Allowed: JPG, PNG, GIF, WebP.');
+        return false;
+    }
+
+    // Ensure upload directory exists
+    if (!is_dir(UPLOAD_DIR)) {
+        mkdir(UPLOAD_DIR, 0755, true);
+    }
+
+    $ext = match($mimeType) {
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/gif' => 'gif',
+        'image/webp' => 'webp',
+        default => 'png',
+    };
+
+    $filename = $teamId . '_' . time() . '.' . $ext;
+
+    if (!move_uploaded_file($file['tmp_name'], UPLOAD_DIR . $filename)) {
+        setFlash('error', 'Failed to save logo file.');
+        return false;
+    }
+
+    return $filename;
+}
+
+/**
+ * Calculate remaining game slots for a queue tournament.
+ *
+ * Uses the event end datetime (end_date + end_time) and game_duration_minutes
+ * to determine how many more games can be played, then subtracts teams already
+ * signed up (who haven't played yet) to get available signup slots.
+ *
+ * This is the core function for dynamic queue registration cutoff — it tells
+ * the signup page, tournament page, and display pages whether registration
+ * is still open and how long the estimated wait is.
+ *
+ * @param  array $tournament   Tournament row from DB (needs end_date, end_time, game_duration_minutes)
+ * @param  int   $pendingTeams Number of teams signed up but not yet eliminated (registered + checked_in)
+ * @return array ['slots_remaining' => int|null, 'registration_open' => bool,
+ *                'est_wait_minutes' => int|null, 'games_remaining' => int|null]
+ *               slots_remaining is null when end_time or game_duration not set (unlimited registration)
+ */
+function getQueueAvailability($tournament, $pendingTeams) {
+    $gameDuration = $tournament['game_duration_minutes'] ?? null;
+    $endDate = $tournament['end_date'] ?? null;
+    $endTime = $tournament['end_time'] ?? null;
+
+    // If game duration or end datetime not configured, registration is always open (unlimited).
+    // This allows queue tournaments to run without a hard time boundary.
+    if (!$gameDuration || !$endDate || !$endTime) {
+        return [
+            'slots_remaining' => null,
+            'registration_open' => true,
+            'est_wait_minutes' => null,
+            'games_remaining' => null,
+        ];
+    }
+
+    // Build end datetime from end_date + end_time
+    $endDatetime = strtotime("{$endDate} {$endTime}");
+    $now = time();
+
+    // If the event end has already passed, no more slots
+    if ($now >= $endDatetime) {
+        return [
+            'slots_remaining' => 0,
+            'registration_open' => false,
+            'est_wait_minutes' => 0,
+            'games_remaining' => 0,
+        ];
+    }
+
+    // Minutes remaining in the event
+    $minutesLeft = ($endDatetime - $now) / 60;
+
+    // Total games that can still be played (each takes game_duration_minutes)
+    $gamesRemaining = max(0, floor($minutesLeft / $gameDuration));
+
+    // Each game consumes 2 teams. Total team capacity = games * 2.
+    $teamCapacity = $gamesRemaining * 2;
+
+    // Subtract teams already waiting (registered + checked_in, not yet eliminated)
+    $slotsRemaining = max(0, $teamCapacity - $pendingTeams);
+
+    // Estimated wait: pending teams / 2 = games ahead, times game_duration
+    $estWait = ($pendingTeams > 0) ? ceil($pendingTeams / 2) * $gameDuration : 0;
+
+    return [
+        'slots_remaining' => $slotsRemaining,
+        'registration_open' => ($slotsRemaining > 0),
+        'est_wait_minutes' => $estWait,
+        'games_remaining' => $gamesRemaining,
+    ];
 }
