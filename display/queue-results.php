@@ -15,7 +15,7 @@ require_once __DIR__ . '/../config/database.php';
 $db = getDB();
 $id = intval($_GET['id'] ?? 0);
 $refreshInterval = intval($_GET['refresh'] ?? 15);
-if ($refreshInterval < 5) $refreshInterval = 5;
+if ($refreshInterval < 5) $refreshInterval = 5; // Minimum 5s to prevent excessive server load
 
 $stmt = $db->prepare("SELECT * FROM tournaments WHERE id = ? AND tournament_type = 'queue'");
 $stmt->execute([$id]);
@@ -27,7 +27,8 @@ if (!$tournament) {
 
 // All completed games, newest first
 $gamesStmt = $db->prepare("
-    SELECT m.match_number, m.team1_score, m.team2_score, m.updated_at,
+    SELECT m.match_number, m.team1_id, m.team2_id, m.winner_id,
+           m.team1_score, m.team2_score, m.updated_at,
            t1.team_name AS team1_name, t2.team_name AS team2_name,
            tw.team_name AS winner_name
     FROM matches m
@@ -40,7 +41,8 @@ $gamesStmt = $db->prepare("
 $gamesStmt->execute([$id]);
 $games = $gamesStmt->fetchAll();
 
-// Current game (for header status)
+// Current game — shown in a "Now Playing" bar at top so spectators
+// viewing results can also see what's happening live
 $currentStmt = $db->prepare("
     SELECT t1.team_name AS team1_name, t2.team_name AS team2_name
     FROM matches m
@@ -249,11 +251,12 @@ $currentGame = $currentStmt->fetch();
             <div class="result-card">
                 <span class="game-num">Game <?php echo $game['match_number']; ?></span>
                 <div class="matchup">
-                    <span class="team-name <?php echo ($game['winner_name'] === $game['team1_name']) ? 'winner' : ''; ?>">
+                    <?php // Highlight winner by ID comparison (not name) to handle duplicate team names ?>
+                    <span class="team-name <?php echo ($game['winner_id'] && $game['winner_id'] == $game['team1_id']) ? 'winner' : ''; ?>">
                         <?php echo h($game['team1_name']); ?>
                     </span>
                     <span class="vs">vs</span>
-                    <span class="team-name <?php echo ($game['winner_name'] === $game['team2_name']) ? 'winner' : ''; ?>">
+                    <span class="team-name <?php echo ($game['winner_id'] && $game['winner_id'] == $game['team2_id']) ? 'winner' : ''; ?>">
                         <?php echo h($game['team2_name']); ?>
                     </span>
                 </div>

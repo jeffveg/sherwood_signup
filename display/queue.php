@@ -15,7 +15,7 @@ require_once __DIR__ . '/../config/database.php';
 $db = getDB();
 $id = intval($_GET['id'] ?? 0);
 $refreshInterval = intval($_GET['refresh'] ?? 10);
-if ($refreshInterval < 5) $refreshInterval = 5;
+if ($refreshInterval < 5) $refreshInterval = 5; // Minimum 5s to prevent excessive server load
 
 $stmt = $db->prepare("SELECT * FROM tournaments WHERE id = ? AND tournament_type = 'queue'");
 $stmt->execute([$id]);
@@ -37,7 +37,9 @@ $currentStmt = $db->prepare("
 $currentStmt->execute([$id]);
 $currentGame = $currentStmt->fetch();
 
-// Waiting checked-in teams (not in a game) — for "Up Next" pairings
+// Waiting checked-in teams (not in a game) — for "Up Next" pairings.
+// Uses LEFT JOIN anti-pattern (WHERE m.id IS NULL) to exclude teams
+// currently in an in_progress match.
 $waitingStmt = $db->prepare("
     SELECT t.id, t.team_name, t.queue_position
     FROM teams t

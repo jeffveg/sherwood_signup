@@ -11,7 +11,8 @@ require_once __DIR__ . '/../config/database.php';
 
 $db = getDB();
 
-// Get tournaments that are active or recently completed (last 7 days)
+// Get all non-draft/cancelled tournaments, sorted by status priority
+// (active first, completed last) then by start date
 $stmt = $db->query("
     SELECT id, name, tournament_type, status, start_date, location
     FROM tournaments
@@ -27,7 +28,15 @@ $stmt = $db->query("
 ");
 $tournaments = $stmt->fetchAll();
 
-// Map tournament types to their available display pages
+/**
+ * Map a tournament type to its available display page links.
+ * Returns array of ['url' => ..., 'label' => ..., 'icon' => ...].
+ * New tournament types must be added here.
+ *
+ * @param  string $type  Tournament type from DB enum
+ * @param  int    $id    Tournament ID for URL params
+ * @return array  Array of link definitions
+ */
 function getDisplayLinks($type, $id) {
     $links = [];
 
@@ -67,6 +76,7 @@ function getDisplayLinks($type, $id) {
     return $links;
 }
 
+/** Render a colored status badge. Falls back to gray 'Unknown' for unexpected values. */
 function statusBadge($status) {
     $labels = [
         'in_progress' => ['In Progress', '#27ae60'],
@@ -78,6 +88,7 @@ function statusBadge($status) {
     return '<span class="status-badge" style="background:' . $info[1] . ';">' . $info[0] . '</span>';
 }
 
+/** Human-readable label for tournament type. Falls back to title-casing the raw value. */
 function typeLabel($type) {
     $labels = [
         'single_elimination' => 'Single Elimination',

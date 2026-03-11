@@ -183,7 +183,8 @@ function handleStartGame($db, $tournament, $input) {
     $maxMatch->execute([$tournament['id']]);
     $matchNumber = $maxMatch->fetchColumn();
 
-    // Create the match
+    // Create the match — queue games all use round=1 and bracket_type='queue'
+    // since there are no real rounds or brackets
     $stmt = $db->prepare("
         INSERT INTO matches (tournament_id, round, match_number, bracket_type, team1_id, team2_id, status)
         VALUES (?, 1, ?, 'queue', ?, ?, 'in_progress')
@@ -333,7 +334,9 @@ function buildQueueState($db, $tournament) {
     $completedStmt->execute([$tid]);
     $completedMatches = $completedStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Next suggested pair: first two checked_in teams not currently in a game
+    // Next suggested pair: first two checked_in teams not currently in a game.
+    // Uses LEFT JOIN anti-pattern (WHERE m.id IS NULL) to exclude teams that
+    // are already in an in_progress match.
     $waitingStmt = $db->prepare("
         SELECT t.id, t.team_name, t.queue_position
         FROM teams t
@@ -356,7 +359,8 @@ function buildQueueState($db, $tournament) {
         ];
     }
 
-    // Stats
+    // Stats — computed from the teams array so we only run one SQL query.
+    // checked_in excludes teams currently in a match (they show as 'playing' instead).
     $checkedIn = count(array_filter($teams, fn($t) => $t['status'] === 'checked_in' && !$t['active_match_id']));
     $playing = count(array_filter($teams, fn($t) => $t['active_match_id']));
     $done = count(array_filter($teams, fn($t) => $t['status'] === 'eliminated'));
@@ -436,7 +440,7 @@ function sendQueueLookAheadNotifications($db, $tournament, $completedMatchId) {
             continue;
         }
 
-        // Build and send
+        // Build and send — buildQueueNotifyMessage() is defined in includes/sms.php
         $notificationType = ($gamesAway <= 1) ? 'on_deck' : 'upcoming';
         $messageBody = buildQueueNotifyMessage($team['team_name'], $gamesAway);
         $result = sendSms($normalizedPhone, $messageBody);

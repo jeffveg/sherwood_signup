@@ -178,6 +178,10 @@ var pollTimer = null;
 // API CALLS
 // ============================================================
 
+/**
+ * Send a POST to the queue API. On success, auto-renders the updated state.
+ * Optional callback receives the raw JSON result for action-specific handling.
+ */
 function apiCall(action, data, callback) {
     var body = Object.assign({action: action, tournament_id: TOURNAMENT_ID}, data || {});
     fetch(API_URL, {
@@ -199,6 +203,7 @@ function apiCall(action, data, callback) {
     });
 }
 
+/** Called by setInterval to poll the server for updated queue state every 5 seconds */
 function refreshQueue() { apiCall('get_queue'); }
 
 // ============================================================
@@ -212,6 +217,8 @@ function startGame(team1Id, team2Id) {
     apiCall('start_game', {team1_id: team1Id, team2_id: team2Id});
 }
 
+/** Finish the active game. Reads optional scores from the score-team1/score-team2
+ *  inputs rendered by renderState(). Triggers SMS look-ahead on the server. */
 function finishGame(matchId) {
     var s1 = document.getElementById('score-team1');
     var s2 = document.getElementById('score-team2');
@@ -221,6 +228,7 @@ function finishGame(matchId) {
     apiCall('finish_game', data);
 }
 
+/** Prompt operator for a custom message, then send SMS to a specific team */
 function sendTextPrompt(teamId, teamName) {
     var msg = prompt('Send text to ' + teamName + ':\n\n(Leave blank for default "head to the field" message, or type a custom message)');
     if (msg === null) return; // cancelled
@@ -231,8 +239,10 @@ function sendTextPrompt(teamId, teamName) {
     });
 }
 
+/** Reorder a team up or down in the queue. Reads the current order from DOM rows,
+ *  swaps the team with its neighbor, then sends the new position array to the API. */
 function moveTeam(teamId, direction) {
-    // Get current state from rendered queue rows
+    // Build current order from DOM (exclude eliminated teams)
     var rows = document.querySelectorAll('.queue-row[data-team-id]');
     var order = [];
     rows.forEach(function(r) {
@@ -244,6 +254,7 @@ function moveTeam(teamId, direction) {
     var idx = order.indexOf(teamId);
     if (idx < 0) return;
 
+    // Swap with neighbor in the requested direction
     if (direction === 'up' && idx > 0) {
         var tmp = order[idx - 1]; order[idx - 1] = order[idx]; order[idx] = tmp;
     } else if (direction === 'down' && idx < order.length - 1) {
@@ -252,6 +263,7 @@ function moveTeam(teamId, direction) {
         return;
     }
 
+    // Convert to position array for the API
     var positions = order.map(function(tid, i) { return {team_id: tid, position: i + 1}; });
     apiCall('reorder', {positions: positions});
 }
@@ -260,6 +272,8 @@ function moveTeam(teamId, direction) {
 // RENDER
 // ============================================================
 
+/** Rebuild entire operator UI from the API response. Called after every API action
+ *  and on each 5-second poll. Sections: stats, current game, next up, queue list, past games. */
 function renderState(data) {
     // Stats
     var s = data.stats;
@@ -317,6 +331,8 @@ function renderState(data) {
     } else {
         var html = '';
         data.teams.forEach(function(t) {
+            // Derive display status: if team has an active_match_id, show as 'playing'
+            // (their DB status is still 'checked_in' but they're in a game)
             var displayStatus = t.active_match_id ? 'playing' : t.status;
             var statusLabel = displayStatus === 'checked_in' ? 'checked in' : displayStatus;
 
@@ -327,6 +343,7 @@ function renderState(data) {
             html += '<span class="queue-status-badge ' + displayStatus + '">' + statusLabel + '</span>';
             html += '<div class="queue-actions">';
 
+            // Action buttons: Check In for registered, Undo for checked_in
             if (displayStatus === 'registered') {
                 html += '<button class="btn btn-primary" onclick="checkinTeam(' + t.id + ')">Check In</button>';
             } else if (displayStatus === 'checked_in') {
@@ -390,8 +407,8 @@ function esc(str) {
 // INIT
 // ============================================================
 
-refreshQueue();
-pollTimer = setInterval(refreshQueue, 5000);
+refreshQueue(); // Initial load
+pollTimer = setInterval(refreshQueue, 5000); // Poll every 5 seconds for live updates
 </script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
