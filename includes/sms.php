@@ -62,9 +62,10 @@ function sendSms($to, $body) {
         return ['success' => false, 'message_id' => null, 'error' => 'QUO API URL not configured'];
     }
 
+    // QUO API requires 'to' as an array with exactly one recipient
     $payload = json_encode([
         'from'    => QUO_PHONE_FROM,
-        'to'      => $normalizedTo,
+        'to'      => [$normalizedTo],
         'content' => $body,
     ]);
 
