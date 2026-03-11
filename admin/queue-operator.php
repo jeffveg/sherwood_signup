@@ -41,6 +41,7 @@ include __DIR__ . '/../includes/header.php';
         </div>
         <div class="admin-actions">
             <a href="/display/queue.php?id=<?php echo $id; ?>" class="btn btn-secondary btn-small" target="_blank">Public Display</a>
+            <a href="/display/queue-results.php?id=<?php echo $id; ?>" class="btn btn-secondary btn-small" target="_blank">Results Display</a>
             <a href="/admin/tournament-manage.php?id=<?php echo $id; ?>" class="btn btn-secondary btn-small">Back to Manage</a>
         </div>
     </div>

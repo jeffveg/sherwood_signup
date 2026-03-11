@@ -202,6 +202,7 @@ include __DIR__ . '/../includes/header.php';
                 <?php if ($isQueue && $tournament['status'] === 'in_progress'): ?>
                     <a href="/admin/queue-operator.php?id=<?php echo $id; ?>" class="btn btn-primary">Queue Operator</a>
                     <a href="/display/queue.php?id=<?php echo $id; ?>" class="btn btn-secondary" target="_blank">Queue Display</a>
+                    <a href="/display/queue-results.php?id=<?php echo $id; ?>" class="btn btn-secondary" target="_blank">Results Display</a>
                 <?php endif; ?>
 
                 <?php if ($tournament['status'] === 'in_progress'): ?>
