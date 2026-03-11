@@ -190,6 +190,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
             $errors[] = 'Please enter a valid email address.';
         }
     }
+    // Queue type: phone is mandatory (SMS notifications are the core feature)
+    if ($tournament['tournament_type'] === 'queue' && empty($captain_phone)) {
+        $errors[] = 'Phone number is required for queue events (used for text notifications).';
+    }
 
     // Check duplicate team name
     if (!empty($team_name)) {
@@ -270,6 +274,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
         $stmt->execute($params);
 
         $teamId = $db->lastInsertId();
+
+        // Queue type: auto-assign queue position (FIFO order based on signup time)
+        if ($tournament['tournament_type'] === 'queue') {
+            $maxPos = $db->prepare("SELECT COALESCE(MAX(queue_position), 0) FROM teams WHERE tournament_id = ? AND status != 'withdrawn'");
+            $maxPos->execute([$tournamentId]);
+            $nextPos = $maxPos->fetchColumn() + 1;
+            $db->prepare("UPDATE teams SET queue_position = ? WHERE id = ?")->execute([$nextPos, $teamId]);
+        }
 
         // Handle logo upload
         if (function_exists('handleLogoUpload')) {
@@ -489,10 +501,14 @@ include __DIR__ . '/includes/header.php';
                                placeholder="captain@email.com">
                     </div>
                     <div class="form-group">
-                        <label for="captain_phone">Phone</label>
+                        <label for="captain_phone">Phone<?php echo $tournament['tournament_type'] === 'queue' ? ' *' : ''; ?></label>
                         <input type="tel" id="captain_phone" name="captain_phone" class="form-control"
                                value="<?php echo h($_POST['captain_phone'] ?? ''); ?>"
-                               placeholder="(555) 123-4567">
+                               placeholder="(555) 123-4567"
+                               <?php echo $tournament['tournament_type'] === 'queue' ? 'required' : ''; ?>>
+                        <?php if ($tournament['tournament_type'] === 'queue'): ?>
+                        <span class="form-hint">Required for text notifications about your turn</span>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -501,7 +517,7 @@ include __DIR__ . '/includes/header.php';
                 <div class="form-group">
                     <label style="cursor: pointer; font-size: 14px;">
                         <input type="checkbox" name="sms_opt_in" value="1" id="sms_opt_in"
-                               <?php echo (!empty($_POST['sms_opt_in'])) ? 'checked' : ''; ?>>
+                               <?php echo ($tournament['tournament_type'] === 'queue' || !empty($_POST['sms_opt_in'])) ? 'checked' : ''; ?>>
                         Receive tournament updates via text
                     </label>
                     <small class="sms-phone-hint" style="display:none; color:#c0392b; margin-top:4px;">

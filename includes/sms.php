@@ -201,3 +201,20 @@ function buildScoreMessage($team1Name, $team1Score, $team2Name, $team2Score, $wi
     }
     return "Sherwood Score: {$result} Reply STOP to opt out.";
 }
+
+/**
+ * Build the message body for a queue position notification.
+ * Used for walk-up queue tournaments where teams wait for their turn.
+ * Does not include opponent name since the pairing may not be final yet.
+ *
+ * @param  string $teamName   The team being notified
+ * @param  int    $gamesAway  Number of games until their turn
+ * @return string Message body
+ */
+function buildQueueNotifyMessage($teamName, $gamesAway) {
+    if ($gamesAway <= 1) {
+        return "Sherwood: {$teamName}, you're ON DECK! Your game is next. Head to the field! Reply STOP to opt out.";
+    }
+    $estMinutes = $gamesAway * 8;
+    return "Sherwood: {$teamName}, you're ~{$gamesAway} games away (~{$estMinutes} min). Start heading over! Reply STOP to opt out.";
+}

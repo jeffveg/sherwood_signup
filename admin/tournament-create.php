@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validation
     if (empty($name)) $errors[] = 'Tournament name is required.';
     if (empty($tournament_number)) $errors[] = 'Tournament number is required.';
-    if (!in_array($tournament_type, ['single_elimination', 'double_elimination', 'round_robin', 'two_stage', 'league'])) {
+    if (!in_array($tournament_type, ['single_elimination', 'double_elimination', 'round_robin', 'two_stage', 'league', 'queue'])) {
         $errors[] = 'Invalid tournament type.';
     }
     if ($tournament_type === 'two_stage' && !in_array($two_stage_elimination_type, ['single_elimination', 'double_elimination'])) {
@@ -227,6 +227,9 @@ include __DIR__ . '/../includes/header.php';
                     </option>
                     <option value="league" <?php echo ($_POST['tournament_type'] ?? '') === 'league' ? 'selected' : ''; ?>>
                         League (Multi-Day/Week)
+                    </option>
+                    <option value="queue" <?php echo ($_POST['tournament_type'] ?? '') === 'queue' ? 'selected' : ''; ?>>
+                        Queue (Walk-Up)
                     </option>
                 </select>
             </div>
@@ -455,17 +458,24 @@ document.getElementById('tournament_type').addEventListener('change', function()
 
     twoStageOpts.classList.toggle('hidden', type !== 'two_stage');
 
-    // Show encounters option for league and round_robin
+    // Show encounters option for league and round_robin (not queue)
     const encountersOpt = document.getElementById('league-encounters-option');
     encountersOpt.classList.toggle('hidden', type !== 'league' && type !== 'round_robin');
 
-    // Show bracket display option for elimination types
+    // Show bracket display option for elimination types (not queue)
     const bracketDisplayOpt = document.getElementById('bracket-display-option');
     const hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
     bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
 
+    // Queue type: no time slots, no bracket — SMS is auto-enabled
     const needsSlots = (type === 'round_robin' || type === 'two_stage' || type === 'league');
     timeSlotsSection.classList.toggle('hidden', !needsSlots);
+
+    // Auto-check SMS enabled when queue is selected (SMS is the core feature of queue)
+    var smsCheckbox = document.querySelector('input[name="sms_enabled"]');
+    if (smsCheckbox && type === 'queue' && !smsCheckbox.checked) {
+        smsCheckbox.checked = true;
+    }
 
     // Update labels based on type (groups vs time slots)
     var isTwoStage = (type === 'two_stage');

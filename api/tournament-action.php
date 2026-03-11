@@ -88,7 +88,8 @@ function generateBracket($db, $tournament) {
     $teams = $teams->fetchAll();
     $teamCount = count($teams);
 
-    if ($teamCount < $tournament['min_teams']) {
+    // Queue tournaments don't need a minimum — operator manages games on-the-fly
+    if ($type !== 'queue' && $teamCount < $tournament['min_teams']) {
         setFlash('error', "Not enough teams (need at least {$tournament['min_teams']}).");
         return;
     }
@@ -133,6 +134,13 @@ function generateBracket($db, $tournament) {
                 generateRoundRobin($db, $tournamentId, $teams, $encounters);
             }
             break;
+
+        case 'queue':
+            // Queue tournaments don't generate brackets or matches up front.
+            // Status is already set to in_progress above. Matches are created
+            // on-the-fly by the queue operator via api/queue-action.php.
+            setFlash('success', 'Queue is now active! Use the Queue Operator page to manage games.');
+            return;
     }
 
     setFlash('success', 'Bracket/schedule generated successfully!');

@@ -224,6 +224,7 @@ include __DIR__ . '/../includes/header.php';
                     <option value="round_robin" <?php echo $tournament['tournament_type'] === 'round_robin' ? 'selected' : ''; ?>>Round Robin</option>
                     <option value="two_stage" <?php echo $tournament['tournament_type'] === 'two_stage' ? 'selected' : ''; ?>>Two Stage</option>
                     <option value="league" <?php echo $tournament['tournament_type'] === 'league' ? 'selected' : ''; ?>>League (Multi-Day/Week)</option>
+                    <option value="queue" <?php echo $tournament['tournament_type'] === 'queue' ? 'selected' : ''; ?>>Queue (Walk-Up)</option>
                 </select>
             </div>
 
@@ -528,13 +529,19 @@ document.getElementById('tournament_type').addEventListener('change', function()
     document.getElementById('two-stage-options').classList.toggle('hidden', type !== 'two_stage');
     document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage' && type !== 'league');
 
-    // Show encounters option for league and round_robin
+    // Show encounters option for league and round_robin (not queue)
     document.getElementById('league-encounters-option').classList.toggle('hidden', type !== 'league' && type !== 'round_robin');
 
-    // Show bracket display option for elimination types
+    // Show bracket display option for elimination types (not queue)
     var bracketDisplayOpt = document.getElementById('bracket-display-option');
     var hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
     bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
+
+    // Auto-check SMS enabled when queue is selected (SMS is the core feature of queue)
+    var smsCheckbox = document.querySelector('input[name="sms_enabled"]');
+    if (smsCheckbox && type === 'queue' && !smsCheckbox.checked) {
+        smsCheckbox.checked = true;
+    }
 
     // Update labels based on type (groups vs time slots)
     var isTwoStage = (type === 'two_stage');

@@ -81,6 +81,7 @@ $standings = $standingsStmt->fetchAll();
 // Feature flags based on tournament type
 $hasTimeSlots = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 $isLeague = ($tournament['tournament_type'] === 'league');
+$isQueue = ($tournament['tournament_type'] === 'queue');
 $hasStandings = in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'league']);
 
 // Detect if this league has grouped matches (teams assigned to time slots).
@@ -179,6 +180,15 @@ include __DIR__ . '/../includes/header.php';
                 <?php endif; ?>
 
                 <?php if (in_array($tournament['status'], ['registration_closed', 'registration_open']) && count($teams) >= $tournament['min_teams']): ?>
+                    <?php if ($isQueue): ?>
+                    <form method="POST" action="/api/tournament-action.php" style="display: inline;">
+                        <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
+                        <input type="hidden" name="action" value="generate_bracket">
+                        <button type="submit" class="btn btn-primary" onclick="return confirm('Start the queue? Teams can begin checking in.')">
+                            Start Queue
+                        </button>
+                    </form>
+                    <?php else: ?>
                     <form method="POST" action="/api/tournament-action.php" style="display: inline;">
                         <input type="hidden" name="tournament_id" value="<?php echo $id; ?>">
                         <input type="hidden" name="action" value="generate_bracket">
@@ -186,6 +196,12 @@ include __DIR__ . '/../includes/header.php';
                             Generate Bracket / Schedule
                         </button>
                     </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <?php if ($isQueue && $tournament['status'] === 'in_progress'): ?>
+                    <a href="/admin/queue-operator.php?id=<?php echo $id; ?>" class="btn btn-primary">Queue Operator</a>
+                    <a href="/display/queue.php?id=<?php echo $id; ?>" class="btn btn-secondary" target="_blank">Queue Display</a>
                 <?php endif; ?>
 
                 <?php if ($tournament['status'] === 'in_progress'): ?>

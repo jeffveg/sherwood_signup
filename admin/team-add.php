@@ -98,6 +98,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$tournament_id, $team_name, $captain_name, $captain_email, $captain_phone, $time_slot_id, $status, $regCode]);
         }
 
+        $teamId = $db->lastInsertId();
+
+        // Queue type: auto-assign queue position
+        if ($tournament['tournament_type'] === 'queue') {
+            $maxPos = $db->prepare("SELECT COALESCE(MAX(queue_position), 0) FROM teams WHERE tournament_id = ? AND status != 'withdrawn'");
+            $maxPos->execute([$tournament_id]);
+            $nextPos = $maxPos->fetchColumn() + 1;
+            $db->prepare("UPDATE teams SET queue_position = ? WHERE id = ?")->execute([$nextPos, $teamId]);
+        }
+
         setFlash('success', "Team \"{$team_name}\" added successfully! Registration code: {$regCode}");
         header("Location: /admin/tournament-manage.php?id={$tournament_id}");
         exit;
