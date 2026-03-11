@@ -9,8 +9,8 @@ USE dbs15308446;
 ALTER TABLE tournaments ADD COLUMN sms_enabled TINYINT(1) DEFAULT 0 AFTER bracket_display;
 
 -- Feature 2: Team SMS opt-in
--- Captains opt in during signup (default checked). Only teams with
--- sms_opt_in = 1 AND a valid captain_phone will receive texts.
+-- Captains opt in during signup (checkbox unchecked by default).
+-- Only teams with sms_opt_in = 1 AND a valid captain_phone will receive texts.
 ALTER TABLE teams ADD COLUMN sms_opt_in TINYINT(1) DEFAULT 0 AFTER captain_phone;
 
 -- Feature 3: SMS log table for deduplication and audit trail

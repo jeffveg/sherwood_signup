@@ -174,10 +174,14 @@ function handleNotifyUpcoming($db, $input) {
             continue;
         }
 
-        // Build and send
+        // Build and send — normalize phone before sending and logging
         $messageBody = buildUpcomingMessage($team['name'], $team['opponent'], $gamesAway);
-        $normalizedPhone = normalizePhoneNumber($team['phone']) ?? $team['phone'];
-        $result = sendSms($team['phone'], $messageBody);
+        $normalizedPhone = normalizePhoneNumber($team['phone']);
+        if (!$normalizedPhone) {
+            $skipped++;
+            continue;
+        }
+        $result = sendSms($normalizedPhone, $messageBody);
 
         // Log the attempt (INSERT with duplicate safety net)
         $isDuplicate = logSmsNotification(
@@ -287,8 +291,12 @@ function handleNotifyScore($db, $input) {
             continue;
         }
 
-        $normalizedPhone = normalizePhoneNumber($team['phone']) ?? $team['phone'];
-        $result = sendSms($team['phone'], $messageBody);
+        $normalizedPhone = normalizePhoneNumber($team['phone']);
+        if (!$normalizedPhone) {
+            $skipped++;
+            continue;
+        }
+        $result = sendSms($normalizedPhone, $messageBody);
 
         logSmsNotification(
             $db, $match['tournament_id'], $matchId, $team['id'],
