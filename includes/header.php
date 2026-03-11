@@ -46,7 +46,17 @@ $isAdminPage = strpos($_SERVER['REQUEST_URI'], '/admin') !== false;
                         <li><a href="/captain/logout.php">Logout</a></li>
                     <?php endif; ?>
                     <?php if (isAdmin()): ?>
+                        <?php
+                        // Check for active queue tournament to show quick-access link
+                        $queueStmt = getDB()->query("SELECT id FROM tournaments WHERE tournament_type = 'queue' AND status = 'in_progress' LIMIT 2");
+                        $activeQueues = $queueStmt->fetchAll();
+                        ?>
                         <li><a href="/admin/dashboard.php">Admin Dashboard</a></li>
+                        <?php if (count($activeQueues) === 1): ?>
+                        <li><a href="/admin/queue-operator.php?id=<?php echo $activeQueues[0]['id']; ?>">Queue Operator</a></li>
+                        <?php elseif (count($activeQueues) > 1): ?>
+                        <li><a href="/admin/dashboard.php">Queue Operator</a></li>
+                        <?php endif; ?>
                         <li><a href="/display/" target="_blank">Displays</a></li>
                         <li><a href="/admin/logout.php">Logout</a></li>
                     <?php elseif ($isAdminPage): ?>
