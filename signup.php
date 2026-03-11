@@ -184,10 +184,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
     // Validation
     if (empty($team_name)) $errors[] = 'Team name is required.';
     if (!$isAccountBased || !isTeamLoggedIn()) {
-        if (empty($captain_name)) $errors[] = 'Captain name is required.';
-        if (empty($captain_email)) $errors[] = 'Email address is required.';
-        if (!empty($captain_email) && !filter_var($captain_email, FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Please enter a valid email address.';
+        // Queue only needs phone — no captain name or email required
+        if ($tournament['tournament_type'] !== 'queue') {
+            if (empty($captain_name)) $errors[] = 'Captain name is required.';
+            if (empty($captain_email)) $errors[] = 'Email address is required.';
+            if (!empty($captain_email) && !filter_var($captain_email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'Please enter a valid email address.';
+            }
         }
     }
     // Queue type: phone is mandatory (SMS notifications are the core feature)
@@ -491,28 +494,34 @@ include __DIR__ . '/includes/header.php';
                 </div>
 
                 <?php if (!$isAccountBased || !isTeamLoggedIn()): ?>
-                <!-- Captain info fields (simple form mode) -->
+                <?php $isQueue = ($tournament['tournament_type'] === 'queue'); ?>
+
+                <?php if (!$isQueue): ?>
+                <!-- Captain info fields (simple form mode, not needed for queue) -->
                 <div class="form-group">
                     <label for="captain_name">Captain Name *</label>
                     <input type="text" id="captain_name" name="captain_name" class="form-control"
                            value="<?php echo h($_POST['captain_name'] ?? ''); ?>" required
                            placeholder="Team captain's full name" maxlength="255">
                 </div>
+                <?php endif; ?>
 
                 <div class="form-row">
+                    <?php if (!$isQueue): ?>
                     <div class="form-group">
                         <label for="captain_email">Email *</label>
                         <input type="email" id="captain_email" name="captain_email" class="form-control"
                                value="<?php echo h($_POST['captain_email'] ?? ''); ?>" required
                                placeholder="captain@email.com">
                     </div>
+                    <?php endif; ?>
                     <div class="form-group">
-                        <label for="captain_phone">Phone<?php echo $tournament['tournament_type'] === 'queue' ? ' *' : ''; ?></label>
+                        <label for="captain_phone">Phone<?php echo $isQueue ? ' *' : ''; ?></label>
                         <input type="tel" id="captain_phone" name="captain_phone" class="form-control"
                                value="<?php echo h($_POST['captain_phone'] ?? ''); ?>"
                                placeholder="(555) 123-4567"
-                               <?php echo $tournament['tournament_type'] === 'queue' ? 'required' : ''; ?>>
-                        <?php if ($tournament['tournament_type'] === 'queue'): ?>
+                               <?php echo $isQueue ? 'required' : ''; ?>>
+                        <?php if ($isQueue): ?>
                         <span class="form-hint">Required for text notifications about your turn</span>
                         <?php endif; ?>
                     </div>
