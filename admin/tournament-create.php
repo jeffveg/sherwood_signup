@@ -472,6 +472,11 @@ document.getElementById('tournament_type').addEventListener('change', function()
     const needsSlots = (type === 'round_robin' || type === 'two_stage' || type === 'league');
     timeSlotsSection.classList.toggle('hidden', !needsSlots);
 
+    // Disable required on hidden slot inputs so they don't block form submission
+    timeSlotsSection.querySelectorAll('input[required]').forEach(function(input) {
+        input.required = needsSlots;
+    });
+
     // Queue type: hide min/max teams (registration controlled by deadline only)
     var teamLimitsRow = document.getElementById('team-limits-row');
     if (teamLimitsRow) teamLimitsRow.classList.toggle('hidden', type === 'queue');

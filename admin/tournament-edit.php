@@ -527,7 +527,14 @@ include __DIR__ . '/../includes/header.php';
 document.getElementById('tournament_type').addEventListener('change', function() {
     const type = this.value;
     document.getElementById('two-stage-options').classList.toggle('hidden', type !== 'two_stage');
-    document.getElementById('time-slots-section').classList.toggle('hidden', type !== 'round_robin' && type !== 'two_stage' && type !== 'league');
+    var needsSlots = (type === 'round_robin' || type === 'two_stage' || type === 'league');
+    var timeSlotsSection = document.getElementById('time-slots-section');
+    timeSlotsSection.classList.toggle('hidden', !needsSlots);
+
+    // Disable required on hidden slot inputs so they don't block form submission
+    timeSlotsSection.querySelectorAll('input[required]').forEach(function(input) {
+        input.required = needsSlots;
+    });
 
     // Show encounters option for league and round_robin (not queue)
     document.getElementById('league-encounters-option').classList.toggle('hidden', type !== 'league' && type !== 'round_robin');
