@@ -47,6 +47,7 @@ $isAdminPage = strpos($_SERVER['REQUEST_URI'], '/admin') !== false;
                     <?php endif; ?>
                     <?php if (isAdmin()): ?>
                         <li><a href="/admin/dashboard.php">Admin Dashboard</a></li>
+                        <li><a href="/display/" target="_blank">Displays</a></li>
                         <li><a href="/admin/logout.php">Logout</a></li>
                     <?php elseif ($isAdminPage): ?>
                         <li><a href="/admin/login.php">Admin Login</a></li>
