@@ -40,7 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($tournament_type === 'two_stage' && !in_array($two_stage_elimination_type, ['single_elimination', 'double_elimination'])) {
         $errors[] = 'Two-stage tournaments require an elimination type for stage 2.';
     }
-    if ($max_teams < 2) $errors[] = 'Maximum teams must be at least 2.';
+    // Queue has no team limits — registration is controlled by deadline only
+    if ($tournament_type !== 'queue' && $max_teams < 2) $errors[] = 'Maximum teams must be at least 2.';
 
     // Check unique tournament number
     if (!empty($tournament_number)) {
@@ -265,7 +266,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row" id="team-limits-row">
                 <div class="form-group">
                     <label for="max_teams">Max Teams</label>
                     <input type="number" id="max_teams" name="max_teams" class="form-control"
@@ -470,6 +471,10 @@ document.getElementById('tournament_type').addEventListener('change', function()
     // Queue type: no time slots, no bracket — SMS is auto-enabled
     const needsSlots = (type === 'round_robin' || type === 'two_stage' || type === 'league');
     timeSlotsSection.classList.toggle('hidden', !needsSlots);
+
+    // Queue type: hide min/max teams (registration controlled by deadline only)
+    var teamLimitsRow = document.getElementById('team-limits-row');
+    if (teamLimitsRow) teamLimitsRow.classList.toggle('hidden', type === 'queue');
 
     // Auto-check SMS enabled when queue is selected (SMS is the core feature of queue)
     var smsCheckbox = document.querySelector('input[name="sms_enabled"]');

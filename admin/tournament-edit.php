@@ -258,7 +258,7 @@ include __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row" id="team-limits-row">
                 <div class="form-group">
                     <label for="max_teams">Max Teams</label>
                     <input type="number" id="max_teams" name="max_teams" class="form-control"
@@ -536,6 +536,10 @@ document.getElementById('tournament_type').addEventListener('change', function()
     var bracketDisplayOpt = document.getElementById('bracket-display-option');
     var hasElimination = (type === 'single_elimination' || type === 'double_elimination' || type === 'two_stage');
     bracketDisplayOpt.classList.toggle('hidden', !hasElimination);
+
+    // Queue type: hide min/max teams (registration controlled by deadline only)
+    var teamLimitsRow = document.getElementById('team-limits-row');
+    if (teamLimitsRow) teamLimitsRow.classList.toggle('hidden', type === 'queue');
 
     // Auto-check SMS enabled when queue is selected (SMS is the core feature of queue)
     var smsCheckbox = document.querySelector('input[name="sms_enabled"]');

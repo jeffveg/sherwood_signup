@@ -29,12 +29,12 @@ if ($tournament['status'] !== 'registration_open') {
     exit;
 }
 
-// Check if tournament is full
+// Check if tournament is full (queue has no team cap — controlled by deadline only)
 $teamCount = $db->prepare("SELECT COUNT(*) FROM teams WHERE tournament_id = ? AND status != 'withdrawn'");
 $teamCount->execute([$tournamentId]);
 $currentTeams = $teamCount->fetchColumn();
 
-if ($currentTeams >= $tournament['max_teams']) {
+if ($tournament['tournament_type'] !== 'queue' && $currentTeams >= $tournament['max_teams']) {
     setFlash('error', 'This tournament is full.');
     header("Location: /tournament.php?id={$tournamentId}");
     exit;
@@ -204,10 +204,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
         }
     }
 
-    // Re-check capacity
-    $teamCount->execute([$tournamentId]);
-    if ($teamCount->fetchColumn() >= $tournament['max_teams']) {
-        $errors[] = 'Sorry, the tournament just filled up.';
+    // Re-check capacity (queue has no team cap)
+    if ($tournament['tournament_type'] !== 'queue') {
+        $teamCount->execute([$tournamentId]);
+        if ($teamCount->fetchColumn() >= $tournament['max_teams']) {
+            $errors[] = 'Sorry, the tournament just filled up.';
+        }
     }
 
     // Validate time slot
@@ -456,7 +458,11 @@ include __DIR__ . '/includes/header.php';
                     </span>
                 </p>
                 <p style="font-size: 13px; opacity: 0.5; margin-bottom: 0;">
-                    <?php echo $currentTeams; ?> / <?php echo $tournament['max_teams']; ?> teams registered
+                    <?php if ($tournament['tournament_type'] === 'queue'): ?>
+                        <?php echo $currentTeams; ?> teams signed up
+                    <?php else: ?>
+                        <?php echo $currentTeams; ?> / <?php echo $tournament['max_teams']; ?> teams registered
+                    <?php endif; ?>
                     <?php if ($tournament['registration_deadline']): ?>
                         &middot; Deadline: <?php echo date('M j, Y g:i A', strtotime($tournament['registration_deadline'])); ?>
                     <?php endif; ?>
