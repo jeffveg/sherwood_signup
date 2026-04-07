@@ -107,6 +107,7 @@ if (isTeamLoggedIn()) {
 // Handle account-based actions (login / register)
 // ============================================================
 if ($isAccountBased && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifyCsrf();
     $action = $_POST['action'] ?? '';
 
     // Captain Login
@@ -171,6 +172,7 @@ if ($isAccountBased && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // Handle team registration (both simple + account-based)
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register_team') {
+    verifyCsrf();
     // Block unauthenticated submissions for account-based tournaments
     if ($isAccountBased && !isTeamLoggedIn()) {
         $errors[] = 'You must sign in or create an account before registering a team.';
@@ -410,6 +412,7 @@ include __DIR__ . '/includes/header.php';
             <div class="auth-panel <?php echo $activeAuthTab === 'login' ? 'active' : ''; ?>" id="auth-login"
                  style="<?php echo $activeAuthTab !== 'login' ? 'display:none;' : ''; ?>">
                 <form method="POST" action="">
+                    <?php echo csrfField(); ?>
                     <input type="hidden" name="action" value="captain_login">
                     <div class="form-group">
                         <label for="login_email">Email Address</label>
@@ -430,6 +433,7 @@ include __DIR__ . '/includes/header.php';
             <div class="auth-panel <?php echo $activeAuthTab === 'register' ? 'active' : ''; ?>" id="auth-register"
                  style="<?php echo $activeAuthTab !== 'register' ? 'display:none;' : ''; ?>">
                 <form method="POST" action="">
+                    <?php echo csrfField(); ?>
                     <input type="hidden" name="action" value="captain_register">
                     <div class="form-group">
                         <label for="reg_name">Captain Name *</label>
@@ -524,6 +528,7 @@ include __DIR__ . '/includes/header.php';
             <?php endif; ?>
 
             <form method="POST" action="" id="signup-form" enctype="multipart/form-data">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="action" value="register_team">
 
                 <div class="form-group">

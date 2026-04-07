@@ -34,6 +34,7 @@ $timeSlots = $slotStmt->fetchAll();
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifyCsrf();
     $name = trim($_POST['name'] ?? '');
     $tournament_number = trim($_POST['tournament_number'] ?? '');
     $tournament_type = $_POST['tournament_type'] ?? '';
@@ -197,6 +198,7 @@ include __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 
     <form method="POST" action="">
+        <?php echo csrfField(); ?>
         <!-- Basic Info -->
         <div class="form-section">
             <h3 class="form-section-title">Basic Information</h3>

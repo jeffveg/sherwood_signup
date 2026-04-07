@@ -48,6 +48,7 @@ if (!empty($team['team_account_id'])) {
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifyCsrf();
     $postAction = $_POST['form_action'] ?? 'update_team';
 
     // Handle captain password reset (admin can reset a captain's password)
@@ -146,6 +147,7 @@ include __DIR__ . '/../includes/header.php';
 
     <div class="form-section">
         <form method="POST" action="">
+            <?php echo csrfField(); ?>
             <input type="hidden" name="form_action" value="update_team">
             <div class="form-row">
                 <div class="form-group">
@@ -294,6 +296,7 @@ include __DIR__ . '/../includes/header.php';
         <div style="margin-top: 16px;">
             <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--color-orange);">Reset Captain Password</h4>
             <form method="POST" action="">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="form_action" value="reset_password">
                 <div class="form-row" style="align-items: flex-end;">
                     <div class="form-group">

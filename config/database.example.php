@@ -66,7 +66,7 @@ function getDB() {
  * Generate a unique registration code for teams
  */
 function generateRegistrationCode() {
-    return strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
+    return strtoupper(bin2hex(random_bytes(4)));
 }
 
 /**

@@ -34,6 +34,7 @@ if (in_array($tournament['tournament_type'], ['round_robin', 'two_stage', 'leagu
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifyCsrf();
     $team_name = trim($_POST['team_name'] ?? '');
     $captain_name = trim($_POST['captain_name'] ?? '');
     $captain_email = trim($_POST['captain_email'] ?? '');
@@ -136,6 +137,7 @@ include __DIR__ . '/../includes/header.php';
 
     <div class="form-section">
         <form method="POST" action="">
+            <?php echo csrfField(); ?>
             <div class="form-row">
                 <div class="form-group">
                     <label for="team_name">Team Name *</label>

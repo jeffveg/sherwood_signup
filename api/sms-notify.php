@@ -75,7 +75,7 @@ try {
 } catch (Exception $e) {
     error_log("sms-notify.php error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Server error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'error' => 'An internal server error occurred.']);
 }
 exit;
 

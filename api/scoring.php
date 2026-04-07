@@ -96,7 +96,8 @@ try {
     }
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Server error: ' . $e->getMessage()]);
+    error_log("scoring.php error: " . $e->getMessage());
+    echo json_encode(['success' => false, 'error' => 'An internal server error occurred.']);
 }
 exit;
 

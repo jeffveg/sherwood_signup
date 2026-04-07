@@ -14,10 +14,14 @@ if (isAdmin()) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifyCsrf();
+
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if (empty($username) || empty($password)) {
+    if (isLoginThrottled()) {
+        $error = 'Too many login attempts. Please wait a moment and try again.';
+    } elseif (empty($username) || empty($password)) {
         $error = 'Please enter both username and password.';
     } else {
         if (loginAdmin($username, $password)) {
@@ -46,6 +50,7 @@ include __DIR__ . '/../includes/header.php';
         <?php endif; ?>
 
         <form method="POST" action="">
+            <?php echo csrfField(); ?>
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" class="form-control"

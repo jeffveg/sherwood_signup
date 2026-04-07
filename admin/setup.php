@@ -15,6 +15,7 @@ $success = '';
 
 // Handle password change
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    verifyCsrf();
     if ($_POST['action'] === 'change_password') {
         $current = $_POST['current_password'] ?? '';
         $new = $_POST['new_password'] ?? '';
@@ -108,6 +109,7 @@ include __DIR__ . '/../includes/header.php';
     <div class="form-section">
         <h3 class="form-section-title">Change Your Password</h3>
         <form method="POST" action="">
+            <?php echo csrfField(); ?>
             <input type="hidden" name="action" value="change_password">
             <div class="form-group">
                 <label for="current_password">Current Password</label>
@@ -131,6 +133,7 @@ include __DIR__ . '/../includes/header.php';
     <div class="form-section">
         <h3 class="form-section-title">Create Admin Account</h3>
         <form method="POST" action="">
+            <?php echo csrfField(); ?>
             <input type="hidden" name="action" value="create_admin">
             <div class="form-row">
                 <div class="form-group">
@@ -192,6 +195,7 @@ include __DIR__ . '/../includes/header.php';
             Use this to generate a password hash for the initial admin account in the SQL schema.
         </p>
         <form method="POST" action="">
+            <?php echo csrfField(); ?>
             <input type="hidden" name="action" value="generate_hash">
             <div class="form-group">
                 <label for="hash_password">Password to Hash</label>

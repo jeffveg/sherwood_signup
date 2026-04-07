@@ -27,6 +27,19 @@ RewriteRule ^config/ - [F,L]
 # Protect includes directory from direct access
 RewriteRule ^includes/ - [F,L]
 
+# Block .git directory and other dotfiles/dotdirs from web access
+RewriteRule ^\.git - [F,L]
+RewriteRule ^\.env - [F,L]
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
 # Set default charset
 AddDefaultCharset UTF-8
 

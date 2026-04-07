@@ -10,6 +10,7 @@ $db = getDB();
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verifyCsrf();
     // Collect form data
     $name = trim($_POST['name'] ?? '');
     $tournament_number = trim($_POST['tournament_number'] ?? '');
@@ -188,6 +189,7 @@ include __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 
     <form method="POST" action="" id="tournament-form">
+        <?php echo csrfField(); ?>
         <!-- Basic Info -->
         <div class="form-section">
             <h3 class="form-section-title">Basic Information</h3>
