@@ -453,6 +453,7 @@ include __DIR__ . '/includes/header.php';
                             <input type="tel" id="reg_phone" name="reg_phone" class="form-control"
                                    value="<?php echo h($_POST['reg_phone'] ?? ''); ?>"
                                    placeholder="(555) 123-4567">
+                            <small style="opacity: 0.6;">We may text you tournament updates. <a href="https://sherwoodadventure.com/sms-policy.html" target="_blank" rel="noopener noreferrer">Text Messaging Policy</a></small>
                         </div>
                     </div>
                     <div class="form-row">
@@ -569,6 +570,7 @@ include __DIR__ . '/includes/header.php';
                         <?php if ($isQueue): ?>
                         <span class="form-hint">Required for text notifications about your turn</span>
                         <?php endif; ?>
+                        <small style="opacity: 0.6;">We may text you tournament updates. <a href="https://sherwoodadventure.com/sms-policy.html" target="_blank" rel="noopener noreferrer">Text Messaging Policy</a></small>
                     </div>
                 </div>
                 <?php endif; ?>
