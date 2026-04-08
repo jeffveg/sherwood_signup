@@ -9,6 +9,7 @@
                 </div>
                 <div class="footer-links">
                     <a href="https://sherwoodadventure.com" target="_blank">SherwoodAdventure.com</a>
+                    <a href="https://sherwoodadventure.com/sms-policy.html" target="_blank">Text Messaging Policy</a>
                     <a href="/admin/login.php">Admin</a>
                 </div>
                 <div class="footer-copy">
