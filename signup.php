@@ -469,7 +469,6 @@ include __DIR__ . '/includes/header.php';
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary btn-large" style="width: 100%;">Create Account &amp; Continue</button>
-                    <p class="sms-policy-notice">Text Message Policy: Sherwood Adventure LLC uses text messaging for tournament updates and customer service only. We do not send promotional messages. Message and data rates may apply. Reply STOP to opt out. <a href="http://sherwoodadventure.com/terms-and-conditions.html" target="_blank">View Full Policy</a></p>
                 </form>
             </div>
         </div>
@@ -660,7 +659,7 @@ include __DIR__ . '/includes/header.php';
                 <p class="text-center mt-2" style="font-size: 13px; opacity: 0.5;">
                     By registering, your team agrees to follow the tournament rules.
                 </p>
-                <p class="sms-policy-notice">Text Message Policy: Sherwood Adventure LLC uses text messaging for tournament updates and customer service only. We do not send promotional messages. Message and data rates may apply. Reply STOP to opt out. <a href="http://sherwoodadventure.com/terms-and-conditions.html" target="_blank">View Full Policy</a></p>
+                <p class="sms-policy-notice">Message and data rates may apply. Reply STOP to opt out. <a href="https://sherwoodadventure.com/sms-policy.html" target="_blank">Text Messaging Policy</a></p>
             </form>
         </div>
     <?php endif; ?>
