@@ -245,7 +245,7 @@ for ($i = 0; $i + 1 < count($waitingTeams); $i += 2) {
             <span class="live-dot"></span>
             <?php echo h($tournament['name']); ?>
         </h1>
-        <img src="https://sherwoodadventure.com/images/c/logo_466608_print-1--500.png" alt="Sherwood">
+        <img src="https://sherwoodadventure.com/images/logo.png" alt="Sherwood">
     </div>
 
     <div class="display-body">

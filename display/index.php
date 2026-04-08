@@ -256,7 +256,7 @@ function typeLabel($type) {
 <body>
     <div class="header">
         <h1>Tournament Displays</h1>
-        <img src="https://sherwoodadventure.com/images/c/logo_466608_print-1--500.png" alt="Sherwood Adventure">
+        <img src="https://sherwoodadventure.com/images/logo.png" alt="Sherwood Adventure">
     </div>
 
     <div class="container">

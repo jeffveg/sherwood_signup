@@ -32,7 +32,7 @@ $isAdminPage = strpos($_SERVER['REQUEST_URI'], '/admin') !== false;
     <header class="site-header">
         <div class="header-inner">
             <a href="/" class="logo-link">
-                <img src="https://sherwoodadventure.com/images/c/logo_466608_print-1--500.png"
+                <img src="https://sherwoodadventure.com/images/logo.png"
                      alt="Sherwood Adventure" class="site-logo">
             </a>
             <nav class="main-nav">

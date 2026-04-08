@@ -39,7 +39,7 @@ include __DIR__ . '/../includes/header.php';
 
 <div class="login-wrapper">
     <div class="login-card fade-in">
-        <img src="https://sherwoodadventure.com/images/c/logo_466608_print-1--500.png"
+        <img src="https://sherwoodadventure.com/images/logo.png"
              alt="Sherwood Adventure" class="site-logo">
         <h2>Tournament Admin</h2>
 
