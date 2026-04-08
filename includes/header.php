@@ -18,7 +18,8 @@ $isAdminPage = strpos($_SERVER['REQUEST_URI'], '/admin') !== false;
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=EB+Garamond&family=Lato:wght@300;400;700&family=Lustria&family=PT+Sans&display=swap" rel="stylesheet">
 
-    <!-- Main Stylesheet -->
+    <!-- Brand tokens from main site, then local styles -->
+    <link rel="stylesheet" href="https://sherwoodadventure.com/css/brand.css">
     <link rel="stylesheet" href="/assets/css/style.css">
 
     <?php if ($isAdminPage): ?>

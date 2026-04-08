@@ -6,34 +6,35 @@
 
 /* ============================================================
    CSS VARIABLES / THEME
+   Brand tokens come from sherwoodadventure.com/css/brand.css
    ============================================================ */
 :root {
-    --color-primary-green: #05290b;
-    --color-dark-green: #032006;
-    --color-orange: #ffa133;
-    --color-gold: #fed611;
-    --color-charcoal: #27292a;
-    --color-light-gray: #dfdfdf;
-    --color-white: #ffffff;
-    --color-brown-border: #46240c;
-    --color-teal: #149cb3;
-    --color-overlay-green: rgba(5, 41, 10, 0.46);
-    --color-overlay-dark: rgba(0, 0, 0, 0.3);
-    --color-success: #2d7a3a;
-    --color-danger: #c0392b;
-    --color-warning: #d4a017;
-    --color-info: #149cb3;
+    --color-primary-green:  var(--sw-green);
+    --color-dark-green:     var(--sw-green-dark);
+    --color-orange:         var(--sw-orange);
+    --color-gold:           var(--sw-gold);
+    --color-charcoal:       var(--sw-charcoal);
+    --color-light-gray:     var(--sw-light);
+    --color-white:          var(--sw-white);
+    --color-brown-border:   var(--sw-brown);
+    --color-teal:           var(--sw-teal);
+    --color-overlay-green:  rgba(5, 41, 10, 0.46);
+    --color-overlay-dark:   rgba(0, 0, 0, 0.3);
+    --color-success:        var(--sw-success);
+    --color-danger:         var(--sw-danger);
+    --color-warning:        var(--sw-warning);
+    --color-info:           var(--sw-info);
 
-    --font-display: 'Dancing Script', cursive;
-    --font-heading: 'Lato', sans-serif;
-    --font-button: 'Lustria', serif;
-    --font-body: 'PT Sans', sans-serif;
-    --font-secondary: 'EB Garamond', serif;
+    --font-display:   var(--sw-font-heading);
+    --font-heading:   var(--sw-font-body);
+    --font-button:    var(--sw-font-nav);
+    --font-body:      'PT Sans', sans-serif;
+    --font-secondary: var(--sw-font-sub);
 
-    --border-radius: 11px;
-    --transition: 0.2s ease;
+    --border-radius:  var(--sw-radius);
+    --transition:     var(--sw-transition);
     --container-width: 1200px;
-    --header-height: 100px;
+    --header-height:  100px;
 }
 
 /* ============================================================
